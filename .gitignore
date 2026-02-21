@@ -1,4 +1,7 @@
 __pycache__/
+venv/
+.venv/
+*.pyc
 data/*
 !data/horny.jsonl
 !data/cheapskate.jsonl
