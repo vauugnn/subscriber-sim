@@ -692,11 +692,15 @@ def split_into_sessions(
     else:
         split_sessions = [current_session]
 
-    # Cap at 100 turns per session, drop sessions < 3 turns
+    # Truncate individual messages longer than 300 chars (~85 tokens)
+    for msg in messages:
+        if len(msg["content"]) > 300:
+            msg["content"] = msg["content"][:300].rsplit(" ", 1)[0]
+
+    # Cap at 20 messages per session to keep under ~1024 tokens, drop < 3
     final_sessions = []
     for sess in split_sessions:
-        # Split into chunks of 100 turns
-        chunks = [sess[i:i + 100] for i in range(0, len(sess), 100)]
+        chunks = [sess[i:i + 20] for i in range(0, len(sess), 20)]
         for chunk in chunks:
             if len(chunk) >= 3:
                 final_sessions.append(chunk)
