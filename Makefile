@@ -54,12 +54,12 @@ help:
 # Uses a stamp file so pip only runs once; touch the stamp to re-run.
 $(STAMP):
 	@printf "$(YELLOW)Creating venv…$(NC)\n"
-	$(PYTHON) -m venv $(VENV)
+	$(PYTHON) -m venv --upgrade-deps $(VENV)
 	@printf "$(YELLOW)Installing mlx-lm (inference server)…$(NC)\n"
-	$(VENV_PIP) install --quiet --upgrade pip
-	$(VENV_PIP) install --quiet mlx-lm
+	$(VENV_PY) -m pip install --quiet --upgrade pip
+	$(VENV_PY) -m pip install --quiet mlx-lm
 	@printf "$(YELLOW)Installing Streamlit app deps…$(NC)\n"
-	$(VENV_PIP) install --quiet -r app_requirements.txt
+	$(VENV_PY) -m pip install --quiet -r app_requirements.txt
 	@touch $(STAMP)
 	@printf "$(GREEN)✅ Setup complete$(NC)\n"
 
@@ -118,7 +118,7 @@ hf-deploy:
 
 # ── Modal ─────────────────────────────────────────────────────────────────────
 modal-setup: $(STAMP)
-	$(VENV_PIP) install --quiet modal
+	$(VENV_PY) -m pip install --quiet modal
 	$(VENV)/bin/modal setup
 	@printf "$(GREEN)✅ Modal ready. Run 'make modal-deploy' to deploy.$(NC)\n"
 
