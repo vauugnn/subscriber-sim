@@ -1,0 +1,21 @@
+services:
+  chat:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      # SQLite DB persisted to ./data/ on the host (already gitignored via data/*)
+      - ./data:/app/data
+    environment:
+      # ── Backend: set to "modal" to use Modal GPU, "mlx" for local MLX server
+      - INFERENCE_BACKEND=modal
+      # ── Modal auth (copy from ~/.modal.toml)
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET}
+      # ── MLX fallback (used when INFERENCE_BACKEND=mlx)
+      - MLX_SERVER_URL=http://host.docker.internal:8080
+      - MODEL_NAME=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
+      - DB_PATH=/app/data/chat.db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

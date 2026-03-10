@@ -1,0 +1,13 @@
+unsloth
+unsloth_zoo
+gradio>=3.30
+transformers>=4.32
+datasets>=2.10
+trl>=0.6
+torch>=2.0
+peft>=0.3.0
+accelerate>=0.19.0
+huggingface_hub
+safetensors
+tokenizers
+sentencepiece
