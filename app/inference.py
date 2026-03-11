@@ -106,6 +106,9 @@ def _load_training_responses() -> set[str]:
     from pathlib import Path
     seen: set[str] = set()
     data_dir = Path(os.getenv("DATA_DIR", "/app/data"))
+    if not data_dir.is_dir():
+        log.info("Data dir %s not found — skipping dedup load", data_dir)
+        return seen
     for jsonl_path in data_dir.glob("*.jsonl"):
         try:
             with jsonl_path.open() as f:
