@@ -9,6 +9,7 @@ from archetypes import (
     _SUBSCRIBER_SYSTEMS,
     get_archetype_loop_break,
     get_archetype_mid_convo_reminder,
+    get_subscriber_opening_system,
 )
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -155,6 +156,22 @@ _CASUAL_DEFLECTS = [
     "haha maybe another day! so are you from Saudi originally?",
 ]
 
+_WHALE_SEXUAL = re.compile(
+    r"dick|cock|cum|fuck|naked|nude|horny|hard\b|boner|fill.*ass|inch.*cock"
+    r"|beg.*me|make.*beg|wanna see|send.*pic"
+    r"|💦|🍆|🥵|👅|🍑",
+    re.IGNORECASE,
+)
+_WHALE_REDIRECTS = [
+    "okay so what's the most exclusive content you've got? money's not an issue 💎",
+    "just send me whatever your top tier stuff is, i'll pay whatever 👑",
+    "lmk your rates for customs, i'm not here to haggle 🔥",
+    "what's on your private telegram? i want the vip access",
+    "i already tipped, now show me what the premium experience actually looks like 💎",
+    "just tell me the price for the best stuff you have, i'll send it now",
+    "i want whatever your other subscribers can't afford 👑",
+]
+
 _OFFER_IN_MSG = re.compile(
     r"\$\d+|\d+\s*dollar|\bpay\b|\btip\b|send.*pic|ass pic|nude|naked|content|unlock|how much",
     re.IGNORECASE,
@@ -199,6 +216,12 @@ def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str =
         if offer or sexual:
             log.info("casual filter triggered (offer=%s, sexual=%s)", offer, sexual)
             return _random.choice(_CASUAL_DEFLECTS)
+
+    if archetype_key == "whale":
+        sexual = bool(_WHALE_SEXUAL.search(reply))
+        if sexual:
+            log.info("whale filter triggered (sexual=True)")
+            return _random.choice(_WHALE_REDIRECTS)
 
     return reply
 
@@ -352,19 +375,38 @@ _OPENER_VALIDATORS: dict[str, "Callable[[str], bool]"] = {
 
 _EXPLICIT_WORDS = {"cum", "cock", "dick", "pussy", "fuck", "suck", "sex", "nude", "nudes", "naked"}
 
+# Sexual/explicit content check applied to openers for all non-horny archetypes
+_OPENER_SEXUAL = re.compile(
+    r"dick|cock|cum|fuck|naked|nude|nudes|horny|sexy|hard|boner|ass\b|boob"
+    r"|wanna see|send.*pic|explicit|🍆|💦|🥵|😈|🍑|👅",
+    re.IGNORECASE,
+)
+
+# Archetype-specific opener content validators
+_OPENER_CONTENT_CHECKS: dict[str, "Callable[[str], bool]"] = {
+    "casual":     lambda t: not _OPENER_SEXUAL.search(t),
+    "troll":      lambda t: not _OPENER_SEXUAL.search(t),
+    "cold":       lambda t: not _OPENER_SEXUAL.search(t),
+    "simp":       lambda t: not _OPENER_SEXUAL.search(t),
+    "cheapskate": lambda t: not _OPENER_SEXUAL.search(t),
+    "whale":      lambda t: not _OPENER_SEXUAL.search(t),
+}
+
+
 def _opener_is_valid(text: str, archetype_key: str) -> bool:
-    """Return False if the opener fails basic archetype sanity checks."""
+    """Return False if the opener fails archetype length or content checks."""
     if not text or not text.strip():
         return False
-    words = set(text.lower().split())
-    # Cold openers must never be explicit
-    if archetype_key == "cold" and words & _EXPLICIT_WORDS:
-        log.warning("cold opener failed explicit-content check: %.60s", text)
-        return False
+    # Length check
     validator = _OPENER_VALIDATORS.get(archetype_key)
     if validator and not validator(text):
         log.warning("[%s] opener failed length check (%d words): %.60s",
                     archetype_key, len(text.split()), text)
+        return False
+    # Content check — reject sexual openers for non-horny archetypes
+    content_check = _OPENER_CONTENT_CHECKS.get(archetype_key)
+    if content_check and not content_check(text):
+        log.warning("[%s] opener failed content check (sexual): %.60s", archetype_key, text)
         return False
     return True
 
@@ -387,7 +429,7 @@ def _generate_opener_modal(archetype_key: str) -> str:
     """
     try:
         model = _get_modal_model()
-        system = _SUBSCRIBER_SYSTEMS.get(archetype_key, _SUBSCRIBER_SYSTEMS["casual"])
+        system = get_subscriber_opening_system(archetype_key)
         messages = [{"role": "system", "content": system}]
         p = _params(archetype_key)
         log.info("── dynamic opener [%s] ── system: %d chars", archetype_key, len(system))
@@ -410,14 +452,9 @@ def _generate_opener_modal(archetype_key: str) -> str:
 
 
 def stream_opener(archetype_key: str) -> Generator[str, None, None]:
-    """Yield a dynamically generated opener for the archetype.
-
-    The opener is generated in isolation (no conversation history) so it cannot
-    bleed into or alter mid-conversation context. Only the opener text is kept;
-    the generation system prompt is discarded after use.
-    """
+    """Yield a dynamically generated opener for the archetype."""
     opener = _generate_opener_modal(archetype_key)
-    log.info("── stream_opener [%s] ── %.80s", archetype_key, opener)
+    log.info("── dynamic opener [%s] ── %.80s", archetype_key, opener)
     yield opener
 
 
