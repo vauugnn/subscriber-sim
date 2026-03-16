@@ -547,6 +547,19 @@ _SUBSCRIBER_PREFILLS = {
     "simp":       "",           # no prefill — emotional infatuation needs full sentence context
 }
 
+# Opener-specific prefills — different from mid-convo prefills.
+# These anchor the FIRST message so the model cannot drift into mid-conversation style.
+# Chosen to match the static opener tone for each archetype.
+_OPENER_PREFILLS = {
+    "horny":      "okay i've ",   # "okay i've been on ur page for like 20 mins..."
+    "cheapskate": "heyy ur ",     # "heyy ur so pretty... is there a deal for new subs?"
+    "casual":     "hey! ",        # "hey! ur page randomly came up..."
+    "troll":      "wait ",        # "wait ur actually messaging back??"
+    "whale":      "hey 👋 ",      # "hey 👋 just subbed, what's ur most exclusive stuff?"
+    "cold":       "hey",          # complete response — correct for this archetype
+    "simp":       "i don't ",     # "i don't usually do this but..."
+}
+
 
 # ── Mid-conversation reminders ────────────────────────────────────────────────
 # Appended to the last user message after N turns to prevent role drift.
@@ -697,16 +710,21 @@ _SUBSCRIBER_OPENER_REMINDERS = {
 def get_subscriber_opening_system(archetype_key: str) -> str:
     """System prompt for the subscriber's very first message.
 
-    TASK instruction stays last — it is the most specific directive the model
-    reads before generating the opener, overriding any general tendencies.
+    Few-shots are intentionally excluded — they contain mid-conversation examples
+    that cause the model to generate continuations instead of cold openers.
+    TASK instruction stays last for maximum recency weight.
     """
     base = _SUBSCRIBER_SYSTEMS.get(archetype_key, _SUBSCRIBER_SYSTEMS["casual"])
-    few_shots = _SUBSCRIBER_FEW_SHOTS.get(archetype_key, "")
     mandate = _ARCHETYPE_MANDATES.get(archetype_key, _ARCHETYPE_MANDATES["casual"])
     task = _SUBSCRIBER_OPENER_REMINDERS.get(archetype_key, _SUBSCRIBER_OPENER_REMINDERS["casual"])
-    parts = [_SUBSCRIBER_ROLE_DECLARATION + "\n\n" + base]
-    if few_shots:
-        parts.append(few_shots)
-    parts.append(mandate)
-    parts.append(task)
-    return "\n\n".join(parts)
+    return "\n\n".join([_SUBSCRIBER_ROLE_DECLARATION + "\n\n" + base, mandate, task])
+
+
+def get_opener_prefill(archetype_key: str) -> str:
+    """Short seed token for opener prefilling — anchors the first message format.
+
+    Different from mid-convo prefills: chosen to match cold-open tone rather
+    than mid-conversation voice. The model continues from this text so it cannot
+    start with a reaction or continuation pattern.
+    """
+    return _OPENER_PREFILLS.get(archetype_key, "")

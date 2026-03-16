@@ -14,6 +14,7 @@ from archetypes import (
     _SUBSCRIBER_SYSTEMS,
     get_archetype_loop_break,
     get_archetype_mid_convo_reminder,
+    get_opener_prefill,
     get_subscriber_opening_system,
     get_subscriber_prefill,
 )
@@ -734,9 +735,12 @@ def _generate_opener_modal(archetype_key: str) -> str:
     try:
         model = _get_modal_model()
         system = get_subscriber_opening_system(archetype_key)
+        prefill = get_opener_prefill(archetype_key)
         messages = [{"role": "system", "content": system}]
+        if prefill:
+            messages.append({"role": "assistant", "content": prefill})
         p = _params(archetype_key)
-        log.info("── dynamic opener [%s] ── system: %d chars", archetype_key, len(system))
+        log.info("── dynamic opener [%s] ── system: %d chars | prefill: %r", archetype_key, len(system), prefill)
         tokens = list(model.generate.remote_gen(
             messages,
             stop=p["stop"],
@@ -745,7 +749,8 @@ def _generate_opener_modal(archetype_key: str) -> str:
             top_p=p["top_p"],
             rep_pen=p["rep_pen"],
         ))
-        opener = _filter_response("".join(tokens), archetype_key)
+        raw = "".join(tokens)
+        opener = _filter_response((prefill + raw) if prefill and not raw.startswith(prefill) else raw, archetype_key)
         if _opener_is_valid(opener, archetype_key):
             log.info("dynamic opener accepted: %.120s", opener)
             return opener
