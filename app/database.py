@@ -140,6 +140,32 @@ def update_conversation_title(conv_id: str, title: str) -> None:
             conn.commit()
 
 
+def get_character_state(conv_id: str) -> dict:
+    if _USE_SUPABASE:
+        res = _sb.table("conversations").select("character_state").eq("id", conv_id).execute()
+        return (res.data[0].get("character_state") or {}) if res.data else {}
+    conn = _get_conn()
+    row = conn.execute("SELECT character_state FROM conversations WHERE id = ?", (conv_id,)).fetchone()
+    if row and row["character_state"]:
+        import json
+        return json.loads(row["character_state"])
+    return {}
+
+
+def update_character_state(conv_id: str, state: dict) -> None:
+    import json
+    if _USE_SUPABASE:
+        _sb.table("conversations").update({"character_state": state}).eq("id", conv_id).execute()
+    else:
+        conn = _get_conn()
+        with _lock:
+            conn.execute(
+                "UPDATE conversations SET character_state = ? WHERE id = ?",
+                (json.dumps(state), conv_id),
+            )
+            conn.commit()
+
+
 def delete_conversation(conv_id: str) -> None:
     if _USE_SUPABASE:
         _sb.table("conversations").delete().eq("id", conv_id).execute()

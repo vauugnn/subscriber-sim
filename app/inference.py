@@ -391,6 +391,46 @@ def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str, 
 
 _health_cache: dict = {}
 
+# ── Keep-warm background thread ───────────────────────────────────────────────
+# Modal containers go cold after ~5 min of inactivity. We fire a max_tokens=1
+# ping every 4 minutes from a daemon thread so the container stays hot even
+# when the user is idle. Daemon=True means it dies with the main process.
+
+import threading as _threading
+import time as _time
+
+_KEEP_WARM_INTERVAL = int(os.getenv("KEEP_WARM_INTERVAL", "240"))  # seconds
+
+
+def _keep_warm_ping() -> None:
+    try:
+        model = _get_modal_model()
+        gen = model.generate.remote_gen(
+            [{"role": "user", "content": "hi"}],
+            stop=["\n"],
+            max_tokens=1,
+            temperature=0.1,
+            top_p=0.9,
+            rep_pen=1.0,
+        )
+        next(gen, None)  # consume one token — just enough to touch the container
+        _health_cache["modal"] = {"ok": True, "ts": _time.time()}
+        log.debug("keep-warm ping OK")
+    except Exception as e:
+        _health_cache["modal"] = {"ok": False, "ts": _time.time()}
+        log.warning("keep-warm ping failed: %s", e)
+
+
+def _keep_warm_loop() -> None:
+    _time.sleep(10)  # brief startup delay — let the app finish initialising
+    while True:
+        _keep_warm_ping()
+        _time.sleep(_KEEP_WARM_INTERVAL)
+
+
+_warm_thread = _threading.Thread(target=_keep_warm_loop, daemon=True, name="modal-keep-warm")
+_warm_thread.start()
+
 # ── Training data deduplication ────────────────────────────────────────────────
 # Load all assistant messages from training JSONL files into a set so generated
 # responses can be checked against them. Memorised training examples are rejected
@@ -495,10 +535,68 @@ def _inject_mid_convo_reminder(chat: list[dict], archetype_key: str, looping: bo
     return chat
 
 
-def _stream_modal(history: list[dict], archetype_key: str) -> Generator[str, None, None]:
+_ESCALATION_KEYWORDS: dict[str, list[str]] = {
+    "horny":      ["custom", "vid", "video", "pic", "naked", "want", "need", "asap", "more", "now"],
+    "cheapskate": ["discount", "cheaper", "less", "half", "broke", "afford", "deal", "negotiate", "free", "preview"],
+    "troll":      ["fake", "catfish", "bot", "prove", "scam", "cap", "sus", "lying", "real"],
+    "whale":      ["exclusive", "vip", "premium", "best", "custom", "private", "top", "everything"],
+    "simp":       ["love", "care", "miss", "heart", "feel", "matter", "different", "think about you"],
+    "cold":       [],
+    "casual":     [],
+}
+
+_MILESTONE_KEYWORDS: dict[str, list[str]] = {
+    "horny":      ["custom"],
+    "cheapskate": ["discount", "cheaper", "negotiate", "half", "free"],
+    "troll":      ["fake", "catfish", "bot", "scam", "cap"],
+    "simp":       ["love", "care", "miss", "heart"],
+    "whale":      ["exclusive", "vip", "premium", "custom", "best"],
+    "cold":       [],
+    "casual":     [],
+}
+
+
+def update_character_state(cached: dict, new_msg: str, archetype_key: str) -> dict:
+    """Incrementally update the cached character state with one new assistant message.
+
+    O(1) — only scans the single new message, merges counts into the cache.
+    The cache dict is stored in DB and passed in; this function returns the updated version.
+    """
+    text = new_msg.lower()
+    state = dict(cached)  # shallow copy — don't mutate the caller's dict
+    state["turns"] = state.get("turns", 0) + 1
+    milestone_kws = _MILESTONE_KEYWORDS.get(archetype_key, [])
+    state["milestones"] = state.get("milestones", 0) + sum(1 for kw in milestone_kws if kw in text)
+    esc_kws = _ESCALATION_KEYWORDS.get(archetype_key, [])
+    state["recent_hits"] = sum(1 for kw in esc_kws if kw in text)  # per-turn, not cumulative
+    return state
+
+
+def _build_character_state_str(state: dict, archetype_key: str) -> str | None:
+    """Render the cached state dict into a system-prompt string.
+
+    Returns None when the conversation is too short to need grounding (< 4 turns).
+    """
+    turn_count = state.get("turns", 0)
+    if turn_count < 4:
+        return None
+
+    hits = state.get("recent_hits", 0)
+    escalation = "high" if hits >= 4 else ("medium" if hits >= 2 else "baseline")
+    milestone_count = state.get("milestones", 0)
+    milestone_str = f" Key signals seen: {milestone_count}x." if milestone_count >= 2 else ""
+
+    return (
+        f"[CONV STATE] Turn {turn_count}. Archetype intensity: {escalation}.{milestone_str}"
+        f" You are STILL the same subscriber — do not soften, shift tone, or break character."
+    )
+
+
+def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | None = None) -> Generator[str, None, None]:
     log.info("── stream_modal [%s] ── history: %d msgs", archetype_key, len(history))
     try:
         model = _get_modal_model()
+        char_state = _build_character_state_str(cached_state or {}, archetype_key)
         normalized = _normalize_history(history)
         chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
         looping = _is_looping(chat)
@@ -506,6 +604,9 @@ def _stream_modal(history: list[dict], archetype_key: str) -> Generator[str, Non
         base = _SUBSCRIBER_SYSTEMS.get(archetype_key, _SUBSCRIBER_SYSTEMS["casual"])
         mandate = _ARCHETYPE_MANDATES.get(archetype_key, "")
         system = base + ("\n\n" + mandate if mandate else "")
+        if char_state:
+            system += "\n\n" + char_state
+            log.info("injected char state: %s", char_state)
         messages = [{"role": "system", "content": system}] + chat
         # Inject prefill as a partial assistant turn — forces the model to continue
         # from an in-character seed token (e.g. "lol " for troll, "omg " for horny).
@@ -644,24 +745,14 @@ def generate_opener(archetype_key: str) -> str:
 
 
 def health_check() -> bool:
-    """Check Modal backend health. Result is cached for 60s to avoid per-render overhead."""
-    import time
+    """Return the last known Modal health status from the keep-warm thread."""
     cached = _health_cache.get("modal")
-    if cached and time.time() - cached["ts"] < 60:
-        return cached["ok"]
-    try:
-        import modal
-        modal.Cls.from_name("jasmin-inference", "JasminModel")
-        result = True
-    except Exception:
-        result = False
-    _health_cache["modal"] = {"ok": result, "ts": time.time()}
-    return result
+    return cached["ok"] if cached else False
 
 
-def stream_response(history: list[dict], archetype_key: str) -> Generator[str, None, None]:
+def stream_response(history: list[dict], archetype_key: str, cached_state: dict | None = None) -> Generator[str, None, None]:
     """Stream subscriber response tokens, then apply OOC + archetype post-processing."""
-    full = "".join(_stream_modal(history, archetype_key))
+    full = "".join(_stream_modal(history, archetype_key, cached_state=cached_state))
 
     # Prepend the prefill that was injected as the partial assistant turn so the
     # final response reads as one coherent message (model only returns the continuation).

@@ -399,6 +399,7 @@ elif st.session_state.active_conv_id:
 
         updated_history = db.get_messages(st.session_state.active_conv_id)
         history_for_model = [{"role": m["role"], "content": m["content"]} for m in updated_history]
+        cached_state = db.get_character_state(st.session_state.active_conv_id)
 
         with st.chat_message("assistant", avatar=f":material/{arch['icon']}:"):
             placeholder = st.empty()
@@ -407,7 +408,7 @@ elif st.session_state.active_conv_id:
                 unsafe_allow_html=True,
             )
             full_response = ""
-            for chunk in inference.stream_response(history_for_model, conv["archetype"]):
+            for chunk in inference.stream_response(history_for_model, conv["archetype"], cached_state=cached_state):
                 if not full_response:
                     placeholder.empty()
                 full_response += chunk
@@ -415,6 +416,8 @@ elif st.session_state.active_conv_id:
             placeholder.markdown(full_response)
 
         db.add_message(st.session_state.active_conv_id, "assistant", full_response)
+        new_state = inference.update_character_state(cached_state, full_response, conv["archetype"])
+        db.update_character_state(st.session_state.active_conv_id, new_state)
         st.rerun()
 
 # ── Welcome screen ────────────────────────────────────────────────────────────
