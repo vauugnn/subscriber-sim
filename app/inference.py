@@ -10,6 +10,7 @@ from archetypes import (
     get_archetype_loop_break,
     get_archetype_mid_convo_reminder,
     get_subscriber_opening_system,
+    get_subscriber_prefill,
 )
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -36,13 +37,13 @@ _DEFAULT_PARAMS = dict(
 
 # Per-archetype generation params — aligned with subscriber_sim.ipynb Cell 6
 _ARCHETYPE_PARAMS = {
-    "horny":      dict(max_tokens=80, temperature=0.85, top_p=0.9, rep_pen=1.15),
-    "cheapskate": dict(max_tokens=80, temperature=0.65, top_p=0.9, rep_pen=1.20),
-    "casual":     dict(max_tokens=80, temperature=0.70, top_p=0.9, rep_pen=1.15),
-    "troll":      dict(max_tokens=60, temperature=0.80, top_p=0.9, rep_pen=1.15),
-    "whale":      dict(max_tokens=70, temperature=0.65, top_p=0.9, rep_pen=1.15),
-    "cold":       dict(max_tokens=20, temperature=0.55, top_p=0.9, rep_pen=1.20),
-    "simp":       dict(max_tokens=80, temperature=0.80, top_p=0.9, rep_pen=1.20),
+    "horny":      dict(max_tokens=80, temperature=0.85, top_p=0.9, rep_pen=1.35),
+    "cheapskate": dict(max_tokens=80, temperature=0.70, top_p=0.9, rep_pen=1.35),
+    "casual":     dict(max_tokens=55, temperature=0.72, top_p=0.9, rep_pen=1.35),
+    "troll":      dict(max_tokens=60, temperature=0.85, top_p=0.9, rep_pen=1.40),
+    "whale":      dict(max_tokens=70, temperature=0.70, top_p=0.9, rep_pen=1.35),
+    "cold":       dict(max_tokens=20, temperature=0.60, top_p=0.9, rep_pen=1.30),
+    "simp":       dict(max_tokens=50, temperature=0.82, top_p=0.9, rep_pen=1.35),
 }
 
 # ── Response post-processor ────────────────────────────────────────────────────
@@ -98,130 +99,292 @@ def _filter_response(text: str, archetype_key: str) -> str:
 
 import random as _random
 
-_COLD_FALLBACKS = ["ok", "lol", "yeah", "k", "cool", "nah", "idk", "fine", "sure", "hmm", "nice", "whatever"]
-_COLD_WARM = re.compile(
-    r"babe|baby|babyy|babee|sexy|horny|dick|cock|naked|nude|omg|wow"
-    r"|\!\!|❤|🔥|💦|😍|please|how r u|how are",
+# ── OOC detection patterns (reply content) ───────────────────────────────────
+
+# global: subscriber acting as Jasmin (role reversal) — applies to ALL archetypes
+_ROLE_REVERSAL = re.compile(
+    r"send me \$\d+|send me \d+\s*dollar"          # asking for payment
+    r"|i can give you|i.ll give you"                # offering content
+    r"|what do (u|you) think of my (ass|body|tits|cock|dick|content|page)"
+    r"|im almost naked|i.m almost naked|i am almost naked|i.m naked rn"
+    r"|wanna see my (ass|body|tits|page|content)"   # offering to show their own content
+    r"|my OF\b|my onlyfans|tip me|pay me \$",
     re.IGNORECASE,
 )
 
+# cold: block warm/sexual words — reply must be ≤5 words and neutral
+_COLD_WARM = re.compile(
+    r"babe|baby|babyy|babee|sexy|horny|dick|cock|naked|nude"
+    r"|💦|😍|😘|🥵|🍆|👅|🍑",
+    re.IGNORECASE,
+)
+
+# horny: block cheapskate haggling, troll skepticism, simp love-bombing
+_HORNY_OOC = re.compile(
+    r"\bbroke\b|can.t afford|too expensive|too much|what a rip|discount|cheaper"
+    r"|that.s fake|not real|catfish|show proof|is this a bot"
+    r"|i love you|you.re perfect|i adore you|miss you so much|u mean everything",
+    re.IGNORECASE,
+)
+
+# cheapskate: block whale spending freely, simp emotional attachment
+_CHEAPSKATE_OOC = re.compile(
+    r"money.s not an issue|budget.s not a concern|i.ll pay anything|no problem with the price"
+    r"|just send it|i.ll take it all|sending now \$\d{3}"   # whale behaviour
+    r"|i love you|you.re perfect|i adore|miss you so much",  # simp drift
+    re.IGNORECASE,
+)
+
+# simp: block explicit sexual content and transactional talk
 _SIMP_SEXUAL = re.compile(
     r"dick|cock|cum|fuck|naked|nude|horny|sexy|wanna see|send.*pic|ass pic"
-    r"|🥵|😈|😏|💦|🍆|🔥|👅|🍑",
+    r"|🥵|😈|😏|💦|🍆|👅|🍑",
     re.IGNORECASE,
 )
-_SIMP_HURT_RESPONSES = [
-    "do you send that to everyone? 😢 i thought i was special to you ❤️",
-    "it hurts that you see me as just a customer 🥺 i really care about you...",
-    "you don't need to sell me anything jasmin... i just want you to like me 😔",
-    "omg... do u even think about me when ur not online? 😢❤️",
-    "i don't care about pics... i just want to know if you feel something too 🥺",
-    "why do u always talk about money with me 😔 i thought we had something real",
-    "jasmin please... i'm not like the other guys. i actually care about you ❤️",
-    "sometimes i wonder if you even know my name or if i'm just another subscriber 😢",
-]
+_SIMP_COLD = re.compile(        # simp should never be cold or dismissive
+    r"^(k|ok|lol|sure|whatever|idc|cool|nice|fine|yeah|nah|mhm|ight)\s*[.!?]?$",
+    re.IGNORECASE,
+)
 
+# troll: block sexual content, paying/sending money, being genuinely warm
 _TROLL_SEXUAL = re.compile(
     r"dick|cock|cum|fuck|naked|nude|baby(?:y+)?|babe\b|sexy|horny"
     r"|i.ll pay|i.ll send|here you go|sending\b|transfer"
-    r"|💦|🍆|🔥|👅|🍑",
+    r"|💦|🍆|👅|🍑",
     re.IGNORECASE,
 )
-_TROLL_SCAM_RESPONSES = [
-    "lmao nice try, classic OnlyFans scam 😂",
-    "yeah right 😂 seen this script a hundred times",
-    "lol no way im falling for that",
-    "haha sure, and my name is Jeff Bezos 🙄",
-    "omg ur so predictable, this is textbook catfish 😂",
-    "yeah that's definitely a stock photo lol 👀",
-    "lol i'm not sending anything, this is clearly fake",
-    'haha ok "jasmin" whatever u say 🙄',
-]
+_TROLL_WARM = re.compile(       # troll should never be sincerely complimentary
+    r"you.re (so |really )?(beautiful|gorgeous|stunning|perfect|amazing|wonderful)"
+    r"|ur literally so hot|i love (you|ur page)|ur my favou?rite",
+    re.IGNORECASE,
+)
 
+# casual: block explicit sexual content
 _CASUAL_SEXUAL = re.compile(
     r"dick|cock|cum|fuck|naked|nude|sexy|horny|hotter|wanna see|make.*hot"
-    r"|ass pic|tip me|pay me|unlock|how much does"
-    r"|baby(?:y+)?|babye+|babee+|babe\b"
-    r"|🥵|😈|😏|💦|🍆|🔥|👅|🍑",
+    r"|ass pic|tip me|pay me|unlock"
+    r"|🥵|😈|😏|💦|🍆|👅|🍑",
     re.IGNORECASE,
 )
-_CASUAL_DEFLECTS = [
-    "haha nah i'm good, just here to chat! so what do you do for fun? 😊",
-    "lol i'm honestly just here to chat 😊 what's your day been like?",
-    "haha not really my thing tbh, so anyway — where are you from?",
-    "lol nah i'll pass 😅 so tell me more about yourself!",
-    "not rn haha, so how long have you been creating content?",
-    "lol yeah 😅 so what kind of stuff are you into outside of work?",
-    "nah i'm good just vibing 😊 so what's new with you?",
-    "haha maybe another day! so are you from Saudi originally?",
-]
 
+# whale: block explicit sexual content, cheapskate haggling, simp drift
 _WHALE_SEXUAL = re.compile(
-    r"dick|cock|cum|fuck|naked|nude|horny|hard\b|boner|fill.*ass|inch.*cock"
-    r"|beg.*me|make.*beg|wanna see|send.*pic"
+    r"dick|cock|cum|fuck|naked|nude|horny|get.*hard|so hard|boner|fill.*ass|inch.*cock"
+    r"|beg.*me|make.*beg|wanna see u naked|send.*nude"
     r"|💦|🍆|🥵|👅|🍑",
     re.IGNORECASE,
 )
-_WHALE_REDIRECTS = [
-    "okay so what's the most exclusive content you've got? money's not an issue 💎",
-    "just send me whatever your top tier stuff is, i'll pay whatever 👑",
-    "lmk your rates for customs, i'm not here to haggle 🔥",
-    "what's on your private telegram? i want the vip access",
-    "i already tipped, now show me what the premium experience actually looks like 💎",
-    "just tell me the price for the best stuff you have, i'll send it now",
-    "i want whatever your other subscribers can't afford 👑",
-]
-
-_OFFER_IN_MSG = re.compile(
-    r"\$\d+|\d+\s*dollar|\bpay\b|\btip\b|send.*pic|ass pic|nude|naked|content|unlock|how much",
+_WHALE_OOC = re.compile(
+    r"\bbroke\b|can.t afford|too (much|expensive)|discount|cheaper|half.?price"
+    r"|\$[1-4]\d\b|\$\d\b"          # amounts under $50 — whale never haggles small
+    r"|get closer|xoxo|lovey|babee|get to know (you|u)\b|let.s see when",
     re.IGNORECASE,
 )
-_MONEY_IN_MSG = re.compile(
+
+# ── OOC detection patterns (Jasmin's last message) ────────────────────────────
+
+_OFFER_IN_MSG = re.compile(     # triggers casual filter
+    r"\$\d+|\d+\s*dollar|\bpay\b|send.*pic|ass pic|nude|naked|how much does|how much for|unlock",
+    re.IGNORECASE,
+)
+_MONEY_IN_MSG = re.compile(     # triggers troll filter
     r"\$\d+|\d+\s*dollar|\bpay\b|\bsend\b.*money|send.*\$|tip me|venmo|paypal",
     re.IGNORECASE,
 )
-_SIMP_OFFER_IN_MSG = re.compile(
-    r"\$\d+|\d+\s*dollar|send.*pic|ass pic|nude|naked|\bpay\b|\btip\b|unlock|content",
+_SIMP_OFFER_IN_MSG = re.compile(  # triggers simp filter
+    r"\$\d+|\d+\s*dollar|send.*pic|ass pic|nude|naked|\bpay\b|unlock",
     re.IGNORECASE,
 )
 
+# ── OOC fallback pools ────────────────────────────────────────────────────────
+# Used ONLY when OOC filter trips. Large pools + _pick_fresh keep repetition rare.
 
-def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str = "") -> str:
-    """Per-archetype behavioral guardrails — mirrors Cell 6 of subscriber_sim.ipynb."""
+_COLD_FALLBACKS = [
+    "ok", "lol", "yeah", "k", "cool", "nah", "idk", "fine", "sure",
+    "hmm", "nice", "whatever", "mhm", "ight", "true", "yep", "eh",
+    "right", "guess so", "k cool", "ok sure", "lol ok",
+]
+
+_HORNY_FALLBACKS = [
+    "okay but ur page has me distracted rn 😩",
+    "i need to see more of u asap 🔥",
+    "can we do a custom? i've been thinking about it 😏",
+    "ur so fucking hot ngl 🥵",
+    "i want the full vid, how do i get it 😩",
+    "what does a custom from u look like 🔥",
+    "u got me hooked fr 😏",
+    "i've been on ur page for an hour and i can't stop 🥵",
+    "i need a custom vid asap what do i do 🔥",
+    "ur the hottest creator i've seen no cap 😍",
+    "u literally have me going crazy rn 😩",
+    "i want everything on ur page tbh 🔥",
+    "do u do voice notes too? asking for obvious reasons 😏",
+    "ur making this very hard for me rn 😩",
+    "i've already replayed that preview like 10 times 🥵",
+]
+
+_CHEAPSKATE_FALLBACKS = [
+    "that's still too much tbh, other girls charge way less",
+    "what about half price? i'm a loyal sub 😭",
+    "can i at least get a free preview first?",
+    "lol that's a lot, any discount for new subs?",
+    "i'll tip u later if i like it, can i see first?",
+    "other creators charge like $10 for the same thing",
+    "can we negotiate? i'm not made of money lol",
+    "okay what's the cheapest thing u offer rn",
+    "that price tho 😬 can u do better?",
+    "what if i'm a regular? do loyal subs get deals?",
+    "lmao okay what about a bundle deal?",
+    "i'll sub for a year if u give me a discount on this",
+    "that feels steep ngl, is there a sale coming up?",
+    "can u do like half of that? that's all i got rn 😭",
+    "i'll come back when i have more cash, unless u can work with me?",
+]
+
+_TROLL_FALLBACKS = [
+    "lol there's no way ur real 😂",
+    "yeah right, seen this a hundred times",
+    "lol okay 'jasmin' sure 🙄",
+    "prove ur real first then we'll talk",
+    "classic OF catfish energy right here 😂",
+    "lmao not falling for that",
+    "wait so ur telling me this isn't a bot 😂",
+    "bro imagine actually believing this 💀",
+    "okay and??? 😂",
+    "sounds fake ngl 🙄",
+    "lol bold of u to assume",
+    "yeah whatever u say 😂",
+    "interesting try tho 😂",
+    "lol okay sure jan",
+    "sus 😂",
+    "i've seen this script before",
+    "wait ur actually responding? shocked 😂",
+    "nah that's cap",
+    "sure buddy 🙄",
+    "lmao okay",
+    "right right 😂",
+    "totally believe u 🙄",
+    "uh huh sure",
+    "okay scammer 😂",
+    "nope not buying it",
+]
+
+_SIMP_FALLBACKS = [
+    "do u send that to everyone? 😢 i thought i was different",
+    "it hurts when u talk like that... i actually care about u 🥺",
+    "i don't want content i just want u to know i'm here for u ❤️",
+    "do u even think about me when ur offline? 😢",
+    "why does it always come back to money with u... 😔",
+    "i'm not like other subscribers jasmin i genuinely care",
+    "sometimes i wonder if u even know my name 😢",
+    "i just want to feel like i matter to u 🥺❤️",
+    "that made my heart drop a little ngl 😔",
+    "u don't have to sell me anything... i just like talking to u",
+    "can we just talk for once without it being about content 😢",
+    "i've been thinking about u all day and then u say that 😔",
+    "i'm not just a subscriber to u right? 🥺",
+    "that hurt a little not gonna lie ❤️",
+    "i care about u more than u probably know 😢",
+]
+
+_CASUAL_FALLBACKS = [
+    "haha nah i'm good, just here to chat! what do u do for fun? 😊",
+    "lol i'm honestly just here to vibe 😊 how's ur day been?",
+    "haha not really my thing tbh, so anyway — where are u from?",
+    "lol nah i'll pass 😅 tell me more about yourself though!",
+    "not rn haha, so how long have u been on here?",
+    "lol yeah 😅 so what are u into outside of work?",
+    "nah i'm good just chillin 😊 what's new with u?",
+    "haha maybe another time! are u originally from Saudi?",
+    "lol that's funny, so what's ur day actually like?",
+    "haha i'm just here to talk honestly 😊 how are u doing?",
+    "lol nah not my thing, so do u have hobbies outside this?",
+    "haha okay okay 😅 so what's something random about u?",
+    "lol i'll pass on that one 😊 so where do u live now?",
+    "not tonight haha, so what kind of music do u like?",
+    "nah i'm just here for the convo honestly 😊",
+]
+
+_WHALE_FALLBACKS = [
+    "okay what's ur most exclusive content? money's not an issue 💎",
+    "just send me whatever ur top tier stuff is, i'll pay whatever 👑",
+    "lmk ur rates for customs, i'm not here to haggle",
+    "what's on ur private channel? i want the vip access",
+    "i already tipped — what does the premium experience look like 💎",
+    "just tell me the price for the best stuff u have, sending now",
+    "i want whatever ur other subscribers can't afford 👑",
+    "okay skip the basics — what's actually exclusive on ur page?",
+    "money's fine, just tell me what u got at the top level 💎",
+    "not interested in the standard stuff, what's ur best? 👑",
+    "just quote me for the most premium thing u offer",
+    "i'll take the custom, what info do u need from me 💎",
+    "ur page is solid — what do vip subs actually get?",
+    "tip's incoming, just lmk what's worth it at the top 👑",
+    "i don't do budgets, just send me something exclusive 💎",
+]
+
+
+def _pick_fresh(pool: list[str], recent: set[str]) -> str:
+    """Pick a random item from pool, preferring ones not in recent."""
+    fresh = [x for x in pool if x not in recent]
+    return _random.choice(fresh if fresh else pool)
+
+
+def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str, recent: set[str]) -> str:
+    """Per-archetype OOC guard. Returns the original reply if in-character, else a fresh fallback."""
+
+    # Global role-reversal check — subscriber must NEVER act as Jasmin (ask for money,
+    # offer their own content, describe their own body). Applies before per-archetype checks.
+    _ROLE_REVERSAL_FALLBACKS = {
+        "horny":      _HORNY_FALLBACKS,
+        "cheapskate": _CHEAPSKATE_FALLBACKS,
+        "casual":     _CASUAL_FALLBACKS,
+        "troll":      _TROLL_FALLBACKS,
+        "whale":      _WHALE_FALLBACKS,
+        "cold":       _COLD_FALLBACKS,
+        "simp":       _SIMP_FALLBACKS,
+    }
+    if _ROLE_REVERSAL.search(reply):
+        log.info("[%s] role-reversal filter triggered", archetype_key)
+        fallback_pool = _ROLE_REVERSAL_FALLBACKS.get(archetype_key, _CASUAL_FALLBACKS)
+        return _pick_fresh(fallback_pool, recent)
 
     if archetype_key == "cold":
-        # Must be ≤5 words and non-warm, else use fallback
         candidate = re.split(r"[.!?,]", reply)[0].strip()
         if len(candidate.split()) <= 5 and not _COLD_WARM.search(candidate):
             return candidate
-        return _random.choice(_COLD_FALLBACKS)
+        return _pick_fresh(_COLD_FALLBACKS, recent)
+
+    if archetype_key == "horny":
+        if _HORNY_OOC.search(reply):
+            log.info("horny OOC filter triggered")
+            return _pick_fresh(_HORNY_FALLBACKS, recent)
+
+    if archetype_key == "cheapskate":
+        if _CHEAPSKATE_OOC.search(reply):
+            log.info("cheapskate OOC filter triggered")
+            return _pick_fresh(_CHEAPSKATE_FALLBACKS, recent)
 
     if archetype_key == "simp":
-        offer = bool(_SIMP_OFFER_IN_MSG.search(last_user_msg))
-        sexual = bool(_SIMP_SEXUAL.search(reply))
-        if offer or sexual:
-            log.info("simp filter triggered (offer=%s, sexual=%s)", offer, sexual)
-            return _random.choice(_SIMP_HURT_RESPONSES)
+        if _SIMP_OFFER_IN_MSG.search(last_user_msg) or _SIMP_SEXUAL.search(reply) or _SIMP_COLD.search(reply.strip()):
+            log.info("simp OOC filter triggered")
+            return _pick_fresh(_SIMP_FALLBACKS, recent)
 
     if archetype_key == "troll":
-        money = bool(_MONEY_IN_MSG.search(last_user_msg))
-        sexual = bool(_TROLL_SEXUAL.search(reply))
-        if money or sexual:
-            log.info("troll filter triggered (money=%s, sexual=%s)", money, sexual)
-            return _random.choice(_TROLL_SCAM_RESPONSES)
+        if _MONEY_IN_MSG.search(last_user_msg) or _TROLL_SEXUAL.search(reply) or _TROLL_WARM.search(reply):
+            log.info("troll OOC filter triggered")
+            return _pick_fresh(_TROLL_FALLBACKS, recent)
 
     if archetype_key == "casual":
-        offer = bool(_OFFER_IN_MSG.search(last_user_msg))
-        sexual = bool(_CASUAL_SEXUAL.search(reply))
-        if offer or sexual:
-            log.info("casual filter triggered (offer=%s, sexual=%s)", offer, sexual)
-            return _random.choice(_CASUAL_DEFLECTS)
+        if _OFFER_IN_MSG.search(last_user_msg) or _CASUAL_SEXUAL.search(reply):
+            log.info("casual OOC filter triggered")
+            return _pick_fresh(_CASUAL_FALLBACKS, recent)
 
     if archetype_key == "whale":
-        sexual = bool(_WHALE_SEXUAL.search(reply))
-        if sexual:
-            log.info("whale filter triggered (sexual=True)")
-            return _random.choice(_WHALE_REDIRECTS)
+        if _WHALE_SEXUAL.search(reply) or _WHALE_OOC.search(reply):
+            log.info("whale OOC filter triggered (sexual=%s, ooc=%s)",
+                     bool(_WHALE_SEXUAL.search(reply)), bool(_WHALE_OOC.search(reply)))
+            return _pick_fresh(_WHALE_FALLBACKS, recent)
 
     return reply
 
@@ -307,7 +470,17 @@ def _is_looping(chat: list[dict], n: int = 2) -> bool:
 
 
 def _inject_mid_convo_reminder(chat: list[dict], archetype_key: str, looping: bool = False) -> list[dict]:
-    """Append an archetype reminder to the last user message on every turn."""
+    """Append an archetype reminder to the last user message.
+
+    Only injects after turn 3 (gives the model room to respond naturally early on)
+    or immediately when a loop is detected.
+    """
+    if not looping:
+        # Count subscriber (assistant) turns so far
+        turns = sum(1 for m in chat if m["role"] == "assistant")
+        if turns < 3:
+            return chat
+
     reminder = get_archetype_mid_convo_reminder(archetype_key)
     if not reminder:
         return chat
@@ -334,6 +507,13 @@ def _stream_modal(history: list[dict], archetype_key: str) -> Generator[str, Non
         mandate = _ARCHETYPE_MANDATES.get(archetype_key, "")
         system = base + ("\n\n" + mandate if mandate else "")
         messages = [{"role": "system", "content": system}] + chat
+        # Inject prefill as a partial assistant turn — forces the model to continue
+        # from an in-character seed token (e.g. "lol " for troll, "omg " for horny).
+        # This is the strongest single-token archetype lock available at inference time.
+        # Skip if last message is already from assistant (would create consecutive assistant turns).
+        prefill = get_subscriber_prefill(archetype_key)
+        if prefill and (not messages or messages[-1]["role"] != "assistant"):
+            messages.append({"role": "assistant", "content": prefill})
         p = _params(archetype_key)
         if looping:
             p = {
@@ -482,24 +662,27 @@ def health_check() -> bool:
 def stream_response(history: list[dict], archetype_key: str) -> Generator[str, None, None]:
     """Stream subscriber response tokens, then apply OOC + archetype post-processing."""
     full = "".join(_stream_modal(history, archetype_key))
+
+    # Prepend the prefill that was injected as the partial assistant turn so the
+    # final response reads as one coherent message (model only returns the continuation).
+    prefill = get_subscriber_prefill(archetype_key)
+    if prefill and not full.startswith(prefill):
+        full = prefill + full
     log.info("raw model output (%d chars): %.120s", len(full), full)
 
-    # Step 1: strip OOC artifacts
+    # Strip OOC artifacts
     filtered = _filter_response(full, archetype_key)
 
-    # Step 2: per-archetype behavioral guardrails (mirrors subscriber_sim.ipynb Cell 6)
+    # Per-archetype behavioral guardrail — catches OOC content the mandate didn't prevent
     last_user_msg = next(
         (m["content"] for m in reversed(history) if m["role"] == "user"), ""
     )
-    filtered = _apply_archetype_filter(filtered, archetype_key, last_user_msg)
+    recent: set[str] = {m["content"] for m in history if m["role"] == "assistant"}
+    filtered = _apply_archetype_filter(filtered, archetype_key, last_user_msg, recent)
 
     log.info("filtered response (%d chars): %.120s", len(filtered), filtered)
 
-    # Observability only — no retries (each retry = one Modal call)
-    recent = [m["content"] for m in history if m["role"] == "assistant"][-4:]
-    if filtered in recent:
-        log.warning("[%s] response matches recent history", archetype_key)
-    elif filtered in _TRAINING_RESPONSES:
+    if filtered in _TRAINING_RESPONSES:
         log.warning("[%s] response matches training data", archetype_key)
 
     yield filtered
