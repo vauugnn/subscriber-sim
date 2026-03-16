@@ -773,9 +773,24 @@ def generate_opener(archetype_key: str) -> str:
 
 
 def health_check() -> bool:
-    """Return the last known Modal health status from the keep-warm thread."""
+    """Return Modal health status.
+
+    Reads from the keep-warm thread cache when available (updated every 4 min).
+    Falls back to a cheap class-resolution check when the cache is cold (first render).
+    The class lookup has no GPU cost — it only verifies Modal connectivity.
+    Result is cached for 60s so repeated Streamlit renders don't re-check.
+    """
     cached = _health_cache.get("modal")
-    return cached["ok"] if cached else False
+    if cached and (_time.time() - cached["ts"] < 60):
+        return cached["ok"]
+    try:
+        import modal
+        modal.Cls.from_name("jasmin-inference", "JasminModel")
+        result = True
+    except Exception:
+        result = False
+    _health_cache["modal"] = {"ok": result, "ts": _time.time()}
+    return result
 
 
 def stream_response(history: list[dict], archetype_key: str, cached_state: dict | None = None) -> Generator[str, None, None]:

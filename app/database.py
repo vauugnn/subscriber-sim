@@ -25,8 +25,12 @@ Supabase table schema (run once in SQL editor):
 """
 
 import os
+import sys
 import uuid
 from datetime import datetime, timezone
+
+# Ensure local modules are importable regardless of how this file is loaded
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def _now() -> str:
