@@ -76,6 +76,8 @@ def _filter_response(text: str, archetype_key: str) -> str:
     if not text or not text.strip():
         return text
     out = text.strip()
+    # Strip newline-delimited name artifacts from training data (e.g. "Wi\nhi😍" → "hi😍")
+    out = re.sub(r"^[A-Za-z]{1,4}\n+", "", out)
     # Strip hallucinated subscriber name prefixes (e.g. "JO ", "Da ", "BP ")
     out = re.sub(r"^[A-Z][A-Za-z]{0,2}\s+(?=[A-Z])", "", out)
     for pat in _META_PATTERNS:
@@ -672,7 +674,7 @@ _OPENER_SEXUAL = re.compile(
 # Mid-conversation drift patterns — openers containing these are rejected
 # These signal the model is responding to a previous message rather than opening cold
 _OPENER_MIDCONVO = re.compile(
-    r"^(yeah|yep|nah|nope|sure|okay|ok|right|true|lol|lmao|haha|hmm|wait)\b"  # reaction starters
+    r"^(yeah|yep|nah|nope|sure|okay|ok|right|true|lol|lmao|haha|hmm)\b"  # reaction starters (wait removed — conflicts with troll prefill)
     r"|as i (said|mentioned|told)"
     r"|i('ll| will) (take|do|send|pay) (it|that)\b"
     r"|(that|this) (sounds?|looks?|seems?) (good|great|nice|fine|fair|right)"
@@ -716,21 +718,72 @@ def _opener_is_valid(text: str, archetype_key: str) -> bool:
     return True
 
 
+_OPENER_POOLS: dict[str, list[str]] = {
+    "horny": [
+        "okay i've been on ur page for like 20 mins and i genuinely cannot focus on anything else rn 😩🔥",
+        "ur literally the hottest thing i've seen all week, i need a custom asap 😏",
+        "i've been staring at ur preview for way too long ngl 🥵 what does a custom cost",
+        "okay i subbed and now i can't stop looking 😩 u got me hooked already",
+        "omg ur page has me going crazy rn 🔥 do u do customs?",
+    ],
+    "cheapskate": [
+        "heyy ur actually so pretty omg 😭 just subbed but like... is there any deal for new subs or smth lol",
+        "hey! just found ur page, ur cute ngl — do u ever do free previews for new followers? 👀",
+        "hiiii just subbed 😊 any discount codes or anything? asking for a friend lol",
+        "hey ur page looks good! is there like a welcome deal or smth for new subs 😅",
+        "okay ur gorgeous but that price tho 😬 any deals for loyal subs?",
+    ],
+    "casual": [
+        "hey! ur page randomly came up and i'm genuinely obsessed with ur energy lol how r u doing 😊",
+        "hi! just subbed, u seem really chill — where are u from? 😊",
+        "hey! ur vibe is so good lol, do u actually enjoy what u do?",
+        "heyy just stumbled on ur page! ur energy is everything 😊 how's ur day going?",
+        "hi! ur page seems different from most on here lol, what are u into outside of this?",
+    ],
+    "troll": [
+        "wait ur actually messaging back?? i was 100% sure this was a bot account lmao 😂",
+        "lol okay so is this actually u or am i talking to a chatbot rn 🙄",
+        "prove ur real first then we can talk 😂",
+        "classic OF catfish vibes tbh, let's see if u actually respond 🙄",
+        "wait so ur telling me this isn't just an AI account 😂 bold claim",
+    ],
+    "whale": [
+        "hey 👋 just subbed, looks like u got good content. what's the most exclusive stuff u offer? budget's not a concern",
+        "just found ur page — what does a custom look like and what's ur rate? i'm not here to haggle 💎",
+        "hey, just subbed. what's ur most premium offering? i want the vip experience 👑",
+        "hi 👋 just tipped — what's ur top tier content and how do i access it?",
+        "just joined ur page, money's not a concern — what's the most exclusive thing u offer? 💎",
+    ],
+    "cold": [
+        "hey",
+        "sup",
+        "hi",
+        "hey.",
+        "yo",
+    ],
+    "simp": [
+        "i don't usually do this but i had to say something... i've been looking at ur page for like an hour and u are genuinely the most beautiful person i've ever seen 🥺❤️",
+        "okay i know this is weird but i've been on ur page for ages and i just had to reach out, ur energy is unlike anyone else i've seen on here 😢❤️",
+        "i don't usually message creators but u seem different... i've been looking at ur page for so long and i genuinely feel something 🥺",
+        "i had to say something — i've been on ur page for way too long and i think u are genuinely the most stunning person i've ever seen 😢❤️",
+        "i don't do this normally but something about ur page made me have to reach out... u seem so real and genuine 🥺❤️",
+    ],
+}
+
+
 def _static_opener(archetype_key: str) -> str:
-    """Return the static opener for the archetype — fallback only."""
+    """Return a random validated opener from the fallback pool for the archetype."""
+    pool = _OPENER_POOLS.get(archetype_key)
+    if pool:
+        return _random.choice(pool)
     return ARCHETYPES[archetype_key]["opener"]
 
 
 def _generate_opener_modal(archetype_key: str) -> str:
-    """Generate a fresh opener via Modal.
+    """Generate a fresh opener via Modal, with up to 3 attempts before falling back.
 
-    Uses the bare _SUBSCRIBER_SYSTEMS prompt (identical to training) with no
-    history. The model was fine-tuned to produce an archetype-correct first
-    message from exactly this format — system only, no preceding user turn.
-
-    The generation context is discarded after use; only the opener text is kept,
-    so this cannot bleed into mid-conversation history.
-    Falls back to the static opener on any error.
+    Retries with increasing rep_pen to discourage repeated bad patterns.
+    Falls back to a random pool of validated openers on all failures.
     """
     try:
         model = _get_modal_model()
@@ -741,22 +794,26 @@ def _generate_opener_modal(archetype_key: str) -> str:
             messages.append({"role": "assistant", "content": prefill})
         p = _params(archetype_key)
         log.info("── dynamic opener [%s] ── system: %d chars | prefill: %r", archetype_key, len(system), prefill)
-        tokens = list(model.generate.remote_gen(
-            messages,
-            stop=p["stop"],
-            max_tokens=p["max_tokens"],
-            temperature=p["temperature"] + 0.05,  # slight boost for opener variety
-            top_p=p["top_p"],
-            rep_pen=p["rep_pen"],
-        ))
-        raw = "".join(tokens)
-        opener = _filter_response((prefill + raw) if prefill and not raw.startswith(prefill) else raw, archetype_key)
-        if _opener_is_valid(opener, archetype_key):
-            log.info("dynamic opener accepted: %.120s", opener)
-            return opener
-        log.warning("[%s] dynamic opener rejected — using static fallback", archetype_key)
+        for attempt in range(3):
+            p_attempt = {**p, "rep_pen": min(p["rep_pen"] + attempt * 0.15, 1.5),
+                         "temperature": p["temperature"] + 0.05}
+            tokens = list(model.generate.remote_gen(
+                messages,
+                stop=p_attempt["stop"],
+                max_tokens=p_attempt["max_tokens"],
+                temperature=p_attempt["temperature"],
+                top_p=p_attempt["top_p"],
+                rep_pen=p_attempt["rep_pen"],
+            ))
+            raw = "".join(tokens)
+            opener = _filter_response((prefill + raw) if prefill and not raw.startswith(prefill) else raw, archetype_key)
+            if _opener_is_valid(opener, archetype_key):
+                log.info("dynamic opener accepted (attempt %d): %.120s", attempt + 1, opener)
+                return opener
+            log.warning("[%s] opener attempt %d rejected: %.80s", archetype_key, attempt + 1, opener)
+        log.warning("[%s] all opener attempts failed — using pool fallback", archetype_key)
     except Exception as e:
-        log.error("dynamic opener failed: %s — falling back to static", e)
+        log.error("dynamic opener failed: %s — falling back to pool", e)
     return _static_opener(archetype_key)
 
 
