@@ -6,15 +6,15 @@
 # NOTE: For deployment, use Modal instead — see scripts/modal_server.py
 #
 # Model:    mlx-community/Meta-Llama-3.1-8B-Instruct-4bit  (~4.5GB)
-# Adapter:  models/finetuned-mlx/adapters.safetensors       (~160MB)
+# Adapter:  models/lora-adapter-mlx/adapters.safetensors    (~160MB)
 
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 BASE_MODEL="mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
-PEFT_DIR="./models/finetuned"
-MLX_ADAPTER="./models/finetuned-mlx"
+PEFT_DIR="./models/lora-adapter"
+MLX_ADAPTER="./models/lora-adapter-mlx"
 PORT=8080
 HOST="127.0.0.1"
 

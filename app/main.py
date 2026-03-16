@@ -88,6 +88,7 @@ st.markdown("""
     /* Status */
     .server-ok  { color:#22c55e; font-weight:600; font-size:0.8rem; }
     .server-err { color:#ef4444; font-weight:600; font-size:0.8rem; }
+    .backend-badge { font-size:0.72rem; color:#94a3b8; font-weight:500; letter-spacing:0.03em; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -267,7 +268,12 @@ with st.sidebar:
         healthy = inference.health_check()
         status_cls = "server-ok" if healthy else "server-err"
         status_txt = "● On" if healthy else "● Off"
-        st.markdown(f'<span class="{status_cls}">{status_txt}</span>', unsafe_allow_html=True)
+        backend_label = "MLX" if inference._INFERENCE_BACKEND == "mlx" else "Modal"
+        st.markdown(
+            f'<span class="{status_cls}">{status_txt}</span>'
+            f'<br><span class="backend-badge">{backend_label}</span>',
+            unsafe_allow_html=True,
+        )
 
     if st.button("New Conversation", icon=":material/add:", use_container_width=True, type="primary"):
         st.session_state.show_new_conv = True

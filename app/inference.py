@@ -30,7 +30,10 @@ if not log.handlers:
     log.setLevel(logging.DEBUG if os.getenv("DEBUG") else logging.INFO)
 
 # ── Backend ────────────────────────────────────────────────────────────────────
-# All inference runs on Modal GPU (jasmin-inference app).
+# INFERENCE_BACKEND=modal  → Modal GPU (production / Render)
+# INFERENCE_BACKEND=mlx    → local mlx_lm.server (Mac M-series, run start_mlx_server.sh first)
+_INFERENCE_BACKEND = os.getenv("INFERENCE_BACKEND", "modal").lower()
+_MLX_SERVER_URL = os.getenv("MLX_SERVER_URL", "http://localhost:8080").rstrip("/")
 
 # Generation params — defaults (overridden per-archetype below)
 _DEFAULT_PARAMS = dict(
@@ -551,6 +554,74 @@ def _normalize_history(history: list[dict]) -> list[dict]:
 
 
 
+# ── MLX local backend ─────────────────────────────────────────────────────────
+def _mlx_chat(messages: list[dict], *, max_tokens: int, temperature: float, top_p: float, rep_pen: float) -> str:
+    """POST to local mlx_lm.server and return full response text."""
+    import httpx
+    payload = {
+        "model": "local",
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": top_p,
+        "repetition_penalty": rep_pen,
+        "stream": False,
+    }
+    resp = httpx.post(f"{_MLX_SERVER_URL}/v1/chat/completions", json=payload, timeout=120)
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def _stream_mlx(history: list[dict], archetype_key: str, cached_state: dict | None = None) -> Generator[str, None, None]:
+    log.info("── stream_mlx [%s] ── history: %d msgs", archetype_key, len(history))
+    try:
+        last_user_msg = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+        char_state = _build_character_state_str(cached_state or {}, archetype_key, last_user_msg)
+        normalized = _normalize_history(history)
+        chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
+        looping = _is_looping(chat)
+        chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
+        base = _SUBSCRIBER_SYSTEMS.get(archetype_key, _SUBSCRIBER_SYSTEMS["casual"])
+        mandate = _ARCHETYPE_MANDATES.get(archetype_key, "")
+        system = base + ("\n\n" + mandate if mandate else "")
+        if char_state:
+            system += "\n\n" + char_state
+        messages = [{"role": "system", "content": system}] + chat
+        prefill = get_subscriber_prefill(archetype_key)
+        if prefill and (not messages or messages[-1]["role"] != "assistant"):
+            messages.append({"role": "assistant", "content": prefill})
+        p = _params(archetype_key)
+        if looping:
+            p = {**p, "rep_pen": min(p["rep_pen"] + 0.20, 1.40), "temperature": min(p["temperature"] + 0.15, 1.0)}
+        log.info("MLX system: %d chars | msgs: %d", len(system), len(messages))
+        yield _mlx_chat(messages, max_tokens=p["max_tokens"], temperature=p["temperature"], top_p=p["top_p"], rep_pen=p["rep_pen"])
+    except Exception as e:
+        log.error("MLX server error: %s", e, exc_info=True)
+        yield f"⚠️ MLX error: {e}"
+
+
+def _generate_opener_mlx(archetype_key: str) -> str:
+    try:
+        system = get_subscriber_opening_system(archetype_key)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": "[NEW SUBSCRIBER]"},
+        ]
+        p = _params(archetype_key)
+        for attempt in range(3):
+            p_attempt = {**p, "rep_pen": min(p["rep_pen"] + attempt * 0.15, 1.5), "temperature": p["temperature"] + 0.05}
+            raw = _mlx_chat(messages, max_tokens=p_attempt["max_tokens"], temperature=p_attempt["temperature"], top_p=p_attempt["top_p"], rep_pen=p_attempt["rep_pen"])
+            opener = _filter_response(raw, archetype_key)
+            if _opener_is_valid(opener, archetype_key):
+                log.info("MLX opener accepted (attempt %d): %.120s", attempt + 1, opener)
+                return opener
+            log.warning("[%s] MLX opener attempt %d rejected: %.80s", archetype_key, attempt + 1, opener)
+        log.warning("[%s] all MLX opener attempts failed — using pool fallback", archetype_key)
+    except Exception as e:
+        log.error("MLX opener failed: %s — falling back to pool", e)
+    return _static_opener(archetype_key)
+
+
 # ── Modal backend ─────────────────────────────────────────────────────────────
 def _get_modal_model():
     import modal
@@ -911,24 +982,33 @@ def _generate_opener_modal(archetype_key: str) -> str:
 
 def stream_opener(archetype_key: str) -> Generator[str, None, None]:
     """Yield a dynamically generated opener for the archetype."""
-    opener = _generate_opener_modal(archetype_key)
+    opener = _generate_opener_mlx(archetype_key) if _INFERENCE_BACKEND == "mlx" else _generate_opener_modal(archetype_key)
     log.info("── dynamic opener [%s] ── %.80s", archetype_key, opener)
     yield opener
 
 
 def generate_opener(archetype_key: str) -> str:
     """Return a dynamically generated opener for the archetype."""
+    if _INFERENCE_BACKEND == "mlx":
+        return _generate_opener_mlx(archetype_key)
     return _generate_opener_modal(archetype_key)
 
 
 def health_check() -> bool:
-    """Return Modal health status.
+    """Return backend health status (Modal or MLX local server)."""
+    if _INFERENCE_BACKEND == "mlx":
+        cached = _health_cache.get("mlx")
+        if cached and (_time.time() - cached["ts"] < 60):
+            return cached["ok"]
+        try:
+            import httpx
+            httpx.get(f"{_MLX_SERVER_URL}/v1/models", timeout=5).raise_for_status()
+            result = True
+        except Exception:
+            result = False
+        _health_cache["mlx"] = {"ok": result, "ts": _time.time()}
+        return result
 
-    Reads from the keep-warm thread cache when available (updated every 4 min).
-    Falls back to a cheap class-resolution check when the cache is cold (first render).
-    The class lookup has no GPU cost — it only verifies Modal connectivity.
-    Result is cached for 60s so repeated Streamlit renders don't re-check.
-    """
     cached = _health_cache.get("modal")
     if cached and (_time.time() - cached["ts"] < 60):
         return cached["ok"]
@@ -944,7 +1024,10 @@ def health_check() -> bool:
 
 def stream_response(history: list[dict], archetype_key: str, cached_state: dict | None = None) -> Generator[str, None, None]:
     """Stream subscriber response tokens, then apply OOC + archetype post-processing."""
-    full = "".join(_stream_modal(history, archetype_key, cached_state=cached_state))
+    if _INFERENCE_BACKEND == "mlx":
+        full = "".join(_stream_mlx(history, archetype_key, cached_state=cached_state))
+    else:
+        full = "".join(_stream_modal(history, archetype_key, cached_state=cached_state))
 
     # Prepend the prefill that was injected as the partial assistant turn so the
     # final response reads as one coherent message (model only returns the continuation).
