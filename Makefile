@@ -77,7 +77,7 @@ server: convert
 	$(VENV_MLX) \
 		--model        mlx-community/Meta-Llama-3.1-8B-Instruct-4bit \
 		--adapter-path $(MLX_DIR) \
-		--host         127.0.0.1 \
+		--host         0.0.0.0 \
 		--port         8080
 
 # ── Streamlit app — native (Terminal 2) ──────────────────────────────────────
