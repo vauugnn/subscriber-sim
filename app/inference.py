@@ -17,6 +17,7 @@ from archetypes import (
     get_opener_prefill,
     get_subscriber_opening_system,
     get_subscriber_prefill,
+    get_subscriber_system,
 )
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -581,9 +582,7 @@ def _stream_mlx(history: list[dict], archetype_key: str, cached_state: dict | No
         chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
-        base = _SUBSCRIBER_SYSTEMS.get(archetype_key, _SUBSCRIBER_SYSTEMS["casual"])
-        mandate = _ARCHETYPE_MANDATES.get(archetype_key, "")
-        system = base + ("\n\n" + mandate if mandate else "")
+        system = get_subscriber_system(archetype_key)
         if char_state:
             system += "\n\n" + char_state
         messages = [{"role": "system", "content": system}] + chat
@@ -762,9 +761,7 @@ def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | 
         chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
-        base = _SUBSCRIBER_SYSTEMS.get(archetype_key, _SUBSCRIBER_SYSTEMS["casual"])
-        mandate = _ARCHETYPE_MANDATES.get(archetype_key, "")
-        system = base + ("\n\n" + mandate if mandate else "")
+        system = get_subscriber_system(archetype_key)
         if char_state:
             system += "\n\n" + char_state
             log.info("injected char state: %s", char_state)

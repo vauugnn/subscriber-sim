@@ -74,7 +74,11 @@ convert: $(MLX_DIR)/adapters.safetensors
 server: convert
 	@printf "$(GREEN)Starting MLX inference server on localhost:8080…$(NC)\n"
 	@printf "$(YELLOW)Keep this terminal open. Run 'make app' or 'make docker-up' in another.$(NC)\n\n"
-	./start_mlx_server.sh
+	$(VENV_MLX) \
+		--model        mlx-community/Meta-Llama-3.1-8B-Instruct-4bit \
+		--adapter-path $(MLX_DIR) \
+		--host         127.0.0.1 \
+		--port         8080
 
 # ── Streamlit app — native (Terminal 2) ──────────────────────────────────────
 app: $(STAMP)
