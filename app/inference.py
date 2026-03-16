@@ -430,7 +430,10 @@ def _keep_warm_ping() -> None:
 
 
 def _keep_warm_loop() -> None:
-    _time.sleep(10)  # brief startup delay — let the app finish initialising
+    import random as _rand
+    # Jitter spreads multiple worker processes so they don't all ping simultaneously.
+    # Each worker gets a random delay between 10–70s before its first ping.
+    _time.sleep(10 + _rand.randint(0, 60))
     while True:
         _keep_warm_ping()
         _time.sleep(_KEEP_WARM_INTERVAL)
