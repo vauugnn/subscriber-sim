@@ -674,7 +674,7 @@ _OPENER_SEXUAL = re.compile(
 # Mid-conversation drift patterns — openers containing these are rejected
 # These signal the model is responding to a previous message rather than opening cold
 _OPENER_MIDCONVO = re.compile(
-    r"^(yeah|yep|nah|nope|sure|okay|ok|right|true|lol|lmao|haha|hmm)\b"  # reaction starters (wait removed — conflicts with troll prefill)
+    r"^(yeah|yep|nah|nope|sure|ok|right|true|hmm)\b"  # reaction starters only — okay/lol/lmao/haha/wait removed (valid opener starts)
     r"|as i (said|mentioned|told)"
     r"|i('ll| will) (take|do|send|pay) (it|that)\b"
     r"|(that|this) (sounds?|looks?|seems?) (good|great|nice|fine|fair|right)"
@@ -788,12 +788,12 @@ def _generate_opener_modal(archetype_key: str) -> str:
     try:
         model = _get_modal_model()
         system = get_subscriber_opening_system(archetype_key)
-        prefill = get_opener_prefill(archetype_key)
         messages = [{"role": "system", "content": system}]
-        if prefill:
-            messages.append({"role": "assistant", "content": prefill})
+        # Prefills intentionally omitted for openers — they cause grammar artifacts
+        # ("okay i've how much?") and trigger the mid-convo check on their own words.
+        # The TASK instruction + examples in the system prompt provide sufficient anchoring.
         p = _params(archetype_key)
-        log.info("── dynamic opener [%s] ── system: %d chars | prefill: %r", archetype_key, len(system), prefill)
+        log.info("── dynamic opener [%s] ── system: %d chars", archetype_key, len(system))
         for attempt in range(3):
             p_attempt = {**p, "rep_pen": min(p["rep_pen"] + attempt * 0.15, 1.5),
                          "temperature": p["temperature"] + 0.05}
@@ -806,7 +806,7 @@ def _generate_opener_modal(archetype_key: str) -> str:
                 rep_pen=p_attempt["rep_pen"],
             ))
             raw = "".join(tokens)
-            opener = _filter_response((prefill + raw) if prefill and not raw.startswith(prefill) else raw, archetype_key)
+            opener = _filter_response(raw, archetype_key)
             if _opener_is_valid(opener, archetype_key):
                 log.info("dynamic opener accepted (attempt %d): %.120s", attempt + 1, opener)
                 return opener
