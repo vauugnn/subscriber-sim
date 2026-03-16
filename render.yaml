@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: subscriber-sim
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render's free tier spins down after 15 min of inactivity.
+    # Upgrade to "starter" ($7/mo) for always-on with no cold starts.
+    plan: starter
+    envVars:
+      - key: SUPABASE_URL
+        sync: false   # set manually in Render dashboard
+      - key: SUPABASE_KEY
+        sync: false
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+      - key: DEBUG
+        value: "0"
+      - key: KEEP_WARM_INTERVAL
+        value: "240"

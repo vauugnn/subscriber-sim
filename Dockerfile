@@ -17,4 +17,5 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "main.py"]
+# Render (and other PaaS) injects $PORT at runtime. Fall back to 8501 for local Docker.
+CMD ["sh", "-c", "streamlit run main.py --server.port ${PORT:-8501} --server.address 0.0.0.0"]

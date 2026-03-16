@@ -120,6 +120,17 @@ _ROLE_REVERSAL = re.compile(
     re.IGNORECASE,
 )
 
+# Creator-voice phrases that are OOC for archetypes that never create/discount content.
+# NOT applied to whale (legitimately says "i'll send it" = paying) or
+# cheapskate (legitimately says "i can do that" = agreeing to a deal).
+_CREATOR_VOICE = re.compile(
+    r"i.ll give (it|that) cheaper|i can do (it|that) cheaper"   # creator offering discount
+    r"|i.ll (make|post|create|upload|record) (it|that|more|this|the vid|the pic)"  # creator making content
+    r"|how many (videos?|pics?|customs?|posts?) i (will|.ll|can|do|am)",            # creator output talk
+    re.IGNORECASE,
+)
+_CREATOR_VOICE_ARCHETYPES = {"horny", "casual", "troll", "cold", "simp"}
+
 # cold: block warm/sexual words — reply must be ≤5 words and neutral
 _COLD_WARM = re.compile(
     r"babe|baby|babyy|babee|sexy|horny|dick|cock|naked|nude"
@@ -369,6 +380,15 @@ def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str, 
         salvaged = _try_salvage(reply)
         if salvaged and not _ROLE_REVERSAL.search(salvaged):
             log.info("[%s] role-reversal salvaged first sentence: %.60s", archetype_key, salvaged)
+            return salvaged
+        fallback_pool = _ROLE_REVERSAL_FALLBACKS.get(archetype_key, _CASUAL_FALLBACKS)
+        return _pick_fresh(fallback_pool, recent)
+
+    if archetype_key in _CREATOR_VOICE_ARCHETYPES and _CREATOR_VOICE.search(reply):
+        log.info("[%s] creator-voice filter triggered", archetype_key)
+        salvaged = _try_salvage(reply)
+        if salvaged and not _CREATOR_VOICE.search(salvaged) and not _ROLE_REVERSAL.search(salvaged):
+            log.info("[%s] creator-voice salvaged first sentence: %.60s", archetype_key, salvaged)
             return salvaged
         fallback_pool = _ROLE_REVERSAL_FALLBACKS.get(archetype_key, _CASUAL_FALLBACKS)
         return _pick_fresh(fallback_pool, recent)
