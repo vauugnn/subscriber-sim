@@ -788,10 +788,13 @@ def _generate_opener_modal(archetype_key: str) -> str:
     try:
         model = _get_modal_model()
         system = get_subscriber_opening_system(archetype_key)
-        messages = [{"role": "system", "content": system}]
-        # Prefills intentionally omitted for openers — they cause grammar artifacts
-        # ("okay i've how much?") and trigger the mid-convo check on their own words.
-        # The TASK instruction + examples in the system prompt provide sufficient anchoring.
+        # Inject a neutral user turn to match the training format (system + user → assistant).
+        # Without it the model has nothing to "respond to" and hallucinates a mid-conversation.
+        # The token [NEW SUBSCRIBER] is content-neutral so it doesn't bias the opener.
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": "[NEW SUBSCRIBER]"},
+        ]
         p = _params(archetype_key)
         log.info("── dynamic opener [%s] ── system: %d chars", archetype_key, len(system))
         for attempt in range(3):
