@@ -1,7 +1,12 @@
 import logging
 import os
 import re
+import sys
 from collections.abc import Callable, Generator
+
+# Ensure local modules (archetypes, database) are importable regardless of
+# how this file is loaded (Streamlit Cloud, Docker, local venv)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from archetypes import (
     ARCHETYPES,
