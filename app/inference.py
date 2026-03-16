@@ -35,6 +35,7 @@ if not log.handlers:
 # INFERENCE_BACKEND=mlx    → local mlx_lm.server (Mac M-series, run start_mlx_server.sh first)
 _INFERENCE_BACKEND = os.getenv("INFERENCE_BACKEND", "modal").lower()
 _MLX_SERVER_URL = os.getenv("MLX_SERVER_URL", "http://localhost:8080").rstrip("/")
+_MLX_MODEL_ID = os.getenv("MLX_MODEL_ID", "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit")
 
 # Generation params — defaults (overridden per-archetype below)
 _DEFAULT_PARAMS = dict(
@@ -69,6 +70,15 @@ _META_PATTERNS = [
     r"I (?:must )?(?:maintain|keep) (?:appropriate|professional)",
 ]
 
+# Leaked instruction fragments — mid-convo reminder text the model echoes back
+_INSTRUCTION_LEAK_PATTERNS = [
+    r"\[STAY IN CHARACTER[^\]]*\]",          # full reminder block
+    r"—\s*react to that as your character",  # partial echo of reminder
+    r"Respond to THAT specifically",
+    r"She just said:",                        # snippet injection prefix
+    r"\[NEW SUBSCRIBER\]",                   # opener trigger leaked
+]
+
 _MAX_SENTENCES = {
     "horny": 3, "cheapskate": 3, "casual": 3,
     "troll": 2, "whale": 2,     "simp": 4, "cold": 1,
@@ -85,6 +95,8 @@ def _filter_response(text: str, archetype_key: str) -> str:
     # Strip hallucinated subscriber name prefixes (e.g. "JO ", "Da ", "BP ")
     out = re.sub(r"^[A-Z][A-Za-z]{0,2}\s+(?=[A-Z])", "", out)
     for pat in _META_PATTERNS:
+        out = re.sub(pat, "", out, flags=re.IGNORECASE)
+    for pat in _INSTRUCTION_LEAK_PATTERNS:
         out = re.sub(pat, "", out, flags=re.IGNORECASE)
     out = out.strip()
     # Strip surrounding quotes
@@ -118,7 +130,15 @@ _ROLE_REVERSAL = re.compile(
     r"|what do (u|you) think of my (ass|body|tits|cock|dick|content|page)"
     r"|im almost naked|i.m almost naked|i am almost naked|i.m naked rn"
     r"|wanna see my (ass|body|tits|page|content)"   # offering to show their own content
-    r"|my OF\b|my onlyfans|tip me|pay me \$",
+    r"|my OF\b|my onlyfans|tip me|pay me \$"
+    r"|you (have to|need to|gotta|must) pay"        # creator telling subscriber to pay
+    r"|i have (videos?|pics?|content|customs?) for (you|u)"  # creator offering own content
+    r"|i.m not (gonna|going to) give it away"       # creator refusing freebies
+    r"|not (giving|gonna give) (it|this|that) away" # same pattern variation
+    r"|it.s (a little |kinda |pretty )?(expensive|pricey|not cheap)"  # creator setting price
+    r"|that.s (what|why) (my|the) (page|OF|onlyfans) is for"  # creator promoting page
+    r"|i (have|got) (something|stuff|content|videos?) (for you|u can)"   # creator offering
+    r"|wanna see (it|this|my|what i)",                                   # creator teasing own content
     re.IGNORECASE,
 )
 
@@ -131,7 +151,7 @@ _CREATOR_VOICE = re.compile(
     r"|how many (videos?|pics?|customs?|posts?) i (will|.ll|can|do|am)",            # creator output talk
     re.IGNORECASE,
 )
-_CREATOR_VOICE_ARCHETYPES = {"horny", "casual", "troll", "cold", "simp"}
+_CREATOR_VOICE_ARCHETYPES = {"horny", "casual", "troll", "cold", "simp", "cheapskate", "whale"}
 
 # cold: block warm/sexual words — reply must be ≤5 words and neutral
 _COLD_WARM = re.compile(
@@ -501,9 +521,8 @@ def _keep_warm_loop() -> None:
         _time.sleep(_KEEP_WARM_INTERVAL)
 
 
-if _INFERENCE_BACKEND != "mlx":
-    _warm_thread = _threading.Thread(target=_keep_warm_loop, daemon=True, name="modal-keep-warm")
-    _warm_thread.start()
+_warm_thread = _threading.Thread(target=_keep_warm_loop, daemon=True, name="modal-keep-warm")
+_warm_thread.start()
 
 # ── Training data deduplication ────────────────────────────────────────────────
 # Load all assistant messages from training JSONL files into a set so generated
@@ -561,7 +580,7 @@ def _mlx_chat(messages: list[dict], *, max_tokens: int, temperature: float, top_
     """POST to local mlx_lm.server and return full response text."""
     import httpx
     payload = {
-        "model": "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
+        "model": _MLX_MODEL_ID,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
@@ -581,6 +600,11 @@ def _stream_mlx(history: list[dict], archetype_key: str, cached_state: dict | No
         char_state = _build_character_state_str(cached_state or {}, archetype_key, last_user_msg)
         normalized = _normalize_history(history)
         chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
+        # Llama-3 chat template requires user→assistant alternation.
+        # If the history starts with the opener (assistant), prepend the same
+        # synthetic user turn used during opener generation.
+        if chat and chat[0]["role"] == "assistant":
+            chat = [{"role": "user", "content": "[NEW SUBSCRIBER]"}] + chat
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
         system = get_subscriber_system(archetype_key)
@@ -760,6 +784,11 @@ def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | 
         char_state = _build_character_state_str(cached_state or {}, archetype_key, last_user_msg)
         normalized = _normalize_history(history)
         chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
+        # Llama-3 chat template requires user→assistant alternation.
+        # If the history starts with the opener (assistant), prepend the same
+        # synthetic user turn used during opener generation.
+        if chat and chat[0]["role"] == "assistant":
+            chat = [{"role": "user", "content": "[NEW SUBSCRIBER]"}] + chat
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
         system = get_subscriber_system(archetype_key)
