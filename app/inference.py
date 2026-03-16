@@ -87,13 +87,11 @@ def _filter_response(text: str, archetype_key: str) -> str:
     if (out.startswith('"') and out.endswith('"')) or \
        (out.startswith("'") and out.endswith("'")):
         out = out[1:-1].strip()
-    # Enforce max sentence count
+    # Enforce max sentence count — split on all sentence-ending punctuation
     max_s = _MAX_SENTENCES.get(archetype_key, 3)
-    sentences = [s.strip() for s in out.split(". ") if s.strip()]
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", out) if s.strip()]
     if len(sentences) > max_s:
-        out = ". ".join(sentences[:max_s])
-        if not out[-1] in ".!?":
-            out += "."
+        out = " ".join(sentences[:max_s])
     # Reduce excessive punctuation
     out = re.sub(r"([!?.♥💦🔥])\1{2,}", r"\1\1", out)
     out = re.sub(r"\.\.\.+", "..", out)
@@ -542,15 +540,14 @@ def _params(archetype_key: str) -> dict:
 
 
 def _normalize_history(history: list[dict]) -> list[dict]:
-    """tail(14) context window — contiguous recent turns, no gap.
+    """tail(8) context window — contiguous recent turns, no gap.
 
-    The training data was full sessions with no gaps. head+tail windowing
-    introduced an artificial jump (opener → recent) the model was never
-    trained to handle. Archetype grounding is now handled by [CONV STATE]
-    and the mid-convo reminder, so keeping the opener is redundant.
-    14 turns ≈ 700 tokens max — well within model context limits.
+    Training sessions were typically 5-10 turns. Larger windows trigger
+    memorization: the model pattern-matches a training session and reproduces
+    multiple turns instead of generating a single reply. Archetype grounding
+    is covered by [CONV STATE] + mid-convo reminder, not the window size.
     """
-    return history[-14:]
+    return history[-8:]
 
 
 
@@ -785,6 +782,13 @@ def _opener_is_valid(text: str, archetype_key: str) -> bool:
     """Return False if the opener fails archetype length or content checks."""
     if not text or not text.strip():
         return False
+    # Memorization guard — openers that span more than 3 sentences are reproduced
+    # training sessions, not fresh generations. Reject them immediately.
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+    if len(sentences) > 3:
+        log.warning("[%s] opener rejected (memorized session, %d sentences): %.80s",
+                    archetype_key, len(sentences), text)
+        return False
     # Length check
     validator = _OPENER_VALIDATORS.get(archetype_key)
     if validator and not validator(text):
@@ -961,7 +965,14 @@ def stream_response(history: list[dict], archetype_key: str, cached_state: dict 
 
     log.info("filtered response (%d chars): %.120s", len(filtered), filtered)
 
+    # Reject memorized training responses — use a fresh fallback from the archetype pool.
     if filtered in _TRAINING_RESPONSES:
-        log.warning("[%s] response matches training data", archetype_key)
+        log.warning("[%s] response matches training data — using pool fallback", archetype_key)
+        pool_map = {
+            "horny": _HORNY_FALLBACKS, "cheapskate": _CHEAPSKATE_FALLBACKS,
+            "casual": _CASUAL_FALLBACKS, "troll": _TROLL_FALLBACKS,
+            "whale": _WHALE_FALLBACKS, "cold": _COLD_FALLBACKS, "simp": _SIMP_FALLBACKS,
+        }
+        filtered = _pick_fresh(pool_map.get(archetype_key, _CASUAL_FALLBACKS), recent)
 
     yield filtered
