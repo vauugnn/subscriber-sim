@@ -501,8 +501,9 @@ def _keep_warm_loop() -> None:
         _time.sleep(_KEEP_WARM_INTERVAL)
 
 
-_warm_thread = _threading.Thread(target=_keep_warm_loop, daemon=True, name="modal-keep-warm")
-_warm_thread.start()
+if _INFERENCE_BACKEND != "mlx":
+    _warm_thread = _threading.Thread(target=_keep_warm_loop, daemon=True, name="modal-keep-warm")
+    _warm_thread.start()
 
 # ── Training data deduplication ────────────────────────────────────────────────
 # Load all assistant messages from training JSONL files into a set so generated
@@ -560,7 +561,7 @@ def _mlx_chat(messages: list[dict], *, max_tokens: int, temperature: float, top_
     """POST to local mlx_lm.server and return full response text."""
     import httpx
     payload = {
-        "model": "local",
+        "model": "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,

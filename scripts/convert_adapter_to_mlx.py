@@ -91,9 +91,9 @@ def convert(input_dir: Path, output_dir: Path) -> None:
             shutil.copy(src, output_dir / fname)
             print(f"✅  Copied {fname}")
 
-    # Write MLX adapter config (always overwrite — not the PEFT format)
+    # Write MLX adapter config (always write — not the PEFT format)
     mlx_config_path = output_dir / "adapter_config.json"
-    if mlx_config_path.exists():
+    if True:
         with open(input_dir / "adapter_config.json") as f:
             peft_cfg = json.load(f)
         mlx_cfg = {
