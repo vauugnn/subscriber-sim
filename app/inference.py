@@ -338,6 +338,18 @@ def _pick_fresh(pool: list[str], recent: set[str]) -> str:
     return _random.choice(fresh if fresh else pool)
 
 
+def _try_salvage(reply: str) -> str | None:
+    """Option C: Extract the first sentence before the OOC content.
+
+    Returns the first sentence if it's >= 3 words, otherwise None.
+    Only used before falling back to the static pool — preserves conversational
+    value when the beginning of a reply is in-character but the tail goes OOC.
+    """
+    sentences = re.split(r"(?<=[.!?])\s+", reply.strip())
+    first = sentences[0].strip() if sentences else ""
+    return first if len(first.split()) >= 3 else None
+
+
 def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str, recent: set[str]) -> str:
     """Per-archetype OOC guard. Returns the original reply if in-character, else a fresh fallback."""
 
@@ -354,6 +366,10 @@ def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str, 
     }
     if _ROLE_REVERSAL.search(reply):
         log.info("[%s] role-reversal filter triggered", archetype_key)
+        salvaged = _try_salvage(reply)
+        if salvaged and not _ROLE_REVERSAL.search(salvaged):
+            log.info("[%s] role-reversal salvaged first sentence: %.60s", archetype_key, salvaged)
+            return salvaged
         fallback_pool = _ROLE_REVERSAL_FALLBACKS.get(archetype_key, _CASUAL_FALLBACKS)
         return _pick_fresh(fallback_pool, recent)
 
@@ -366,32 +382,56 @@ def _apply_archetype_filter(reply: str, archetype_key: str, last_user_msg: str, 
     if archetype_key == "horny":
         if _HORNY_OOC.search(reply):
             log.info("horny OOC filter triggered")
+            salvaged = _try_salvage(reply)
+            if salvaged and not _HORNY_OOC.search(salvaged) and not _ROLE_REVERSAL.search(salvaged):
+                log.info("horny salvaged first sentence: %.60s", salvaged)
+                return salvaged
             return _pick_fresh(_HORNY_FALLBACKS, recent)
 
     if archetype_key == "cheapskate":
         if _CHEAPSKATE_OOC.search(reply):
             log.info("cheapskate OOC filter triggered")
+            salvaged = _try_salvage(reply)
+            if salvaged and not _CHEAPSKATE_OOC.search(salvaged) and not _ROLE_REVERSAL.search(salvaged):
+                log.info("cheapskate salvaged first sentence: %.60s", salvaged)
+                return salvaged
             return _pick_fresh(_CHEAPSKATE_FALLBACKS, recent)
 
     if archetype_key == "simp":
         if _SIMP_OFFER_IN_MSG.search(last_user_msg) or _SIMP_SEXUAL.search(reply) or _SIMP_COLD.search(reply.strip()):
             log.info("simp OOC filter triggered")
+            salvaged = _try_salvage(reply)
+            if salvaged and not _SIMP_SEXUAL.search(salvaged) and not _SIMP_COLD.search(salvaged.strip()) and not _ROLE_REVERSAL.search(salvaged):
+                log.info("simp salvaged first sentence: %.60s", salvaged)
+                return salvaged
             return _pick_fresh(_SIMP_FALLBACKS, recent)
 
     if archetype_key == "troll":
         if _MONEY_IN_MSG.search(last_user_msg) or _TROLL_SEXUAL.search(reply) or _TROLL_WARM.search(reply):
             log.info("troll OOC filter triggered")
+            salvaged = _try_salvage(reply)
+            if salvaged and not _TROLL_SEXUAL.search(salvaged) and not _TROLL_WARM.search(salvaged) and not _ROLE_REVERSAL.search(salvaged):
+                log.info("troll salvaged first sentence: %.60s", salvaged)
+                return salvaged
             return _pick_fresh(_TROLL_FALLBACKS, recent)
 
     if archetype_key == "casual":
         if _OFFER_IN_MSG.search(last_user_msg) or _CASUAL_SEXUAL.search(reply):
             log.info("casual OOC filter triggered")
+            salvaged = _try_salvage(reply)
+            if salvaged and not _CASUAL_SEXUAL.search(salvaged) and not _ROLE_REVERSAL.search(salvaged):
+                log.info("casual salvaged first sentence: %.60s", salvaged)
+                return salvaged
             return _pick_fresh(_CASUAL_FALLBACKS, recent)
 
     if archetype_key == "whale":
         if _WHALE_SEXUAL.search(reply) or _WHALE_OOC.search(reply):
             log.info("whale OOC filter triggered (sexual=%s, ooc=%s)",
                      bool(_WHALE_SEXUAL.search(reply)), bool(_WHALE_OOC.search(reply)))
+            salvaged = _try_salvage(reply)
+            if salvaged and not _WHALE_SEXUAL.search(salvaged) and not _WHALE_OOC.search(salvaged) and not _ROLE_REVERSAL.search(salvaged):
+                log.info("whale salvaged first sentence: %.60s", salvaged)
+                return salvaged
             return _pick_fresh(_WHALE_FALLBACKS, recent)
 
     return reply
@@ -482,14 +522,15 @@ def _params(archetype_key: str) -> dict:
 
 
 def _normalize_history(history: list[dict]) -> list[dict]:
-    """head(2) + tail(8) context window — mirrors subscriber_sim.ipynb Cell 6.
+    """tail(14) context window — contiguous recent turns, no gap.
 
-    Always preserves the opener + first reply for archetype grounding, then
-    keeps the 8 most recent turns for fresh context. Deduplicates overlap.
+    The training data was full sessions with no gaps. head+tail windowing
+    introduced an artificial jump (opener → recent) the model was never
+    trained to handle. Archetype grounding is now handled by [CONV STATE]
+    and the mid-convo reminder, so keeping the opener is redundant.
+    14 turns ≈ 700 tokens max — well within model context limits.
     """
-    head = history[:2]
-    tail = history[-8:]
-    return head + [m for m in tail if m not in head]
+    return history[-14:]
 
 
 
@@ -535,6 +576,18 @@ def _inject_mid_convo_reminder(chat: list[dict], archetype_key: str, looping: bo
     reminder = get_archetype_mid_convo_reminder(archetype_key)
     if not reminder:
         return chat
+
+    # Option A: enrich the reminder with Jasmin's actual last message so the model
+    # is explicitly told what to respond to, not just reminded of its archetype.
+    last_user_content = next(
+        (m["content"].split("\n\n")[0].strip() for m in reversed(chat) if m["role"] == "user"),
+        "",
+    )
+    if last_user_content:
+        snippet = last_user_content[:80]
+        # Append the context clause just before the closing bracket
+        reminder = reminder.rstrip("]") + f' She just said: "{snippet}". Respond to THAT specifically.]'
+
     if looping:
         reminder += " " + get_archetype_loop_break(archetype_key)
         log.info("loop detected for [%s] — appended escalation cue", archetype_key)
@@ -583,7 +636,7 @@ def update_character_state(cached: dict, new_msg: str, archetype_key: str) -> di
     return state
 
 
-def _build_character_state_str(state: dict, archetype_key: str) -> str | None:
+def _build_character_state_str(state: dict, archetype_key: str, last_user_msg: str = "") -> str | None:
     """Render the cached state dict into a system-prompt string.
 
     Returns None when the conversation is too short to need grounding (< 4 turns).
@@ -597,9 +650,17 @@ def _build_character_state_str(state: dict, archetype_key: str) -> str | None:
     milestone_count = state.get("milestones", 0)
     milestone_str = f" Key signals seen: {milestone_count}x." if milestone_count >= 2 else ""
 
+    # Option B: anchor the [CONV STATE] block to Jasmin's actual last message so the
+    # system prompt reinforces what the mid-convo reminder already says.
+    last_said_str = ""
+    if last_user_msg:
+        snippet = last_user_msg[:80].strip()
+        last_said_str = f' Jasmin just said: "{snippet}" — react to that as your character.'
+
     return (
         f"[CONV STATE] Turn {turn_count}. Archetype intensity: {escalation}.{milestone_str}"
         f" You are STILL the same subscriber — do not soften, shift tone, or break character."
+        f"{last_said_str}"
     )
 
 
@@ -607,7 +668,8 @@ def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | 
     log.info("── stream_modal [%s] ── history: %d msgs", archetype_key, len(history))
     try:
         model = _get_modal_model()
-        char_state = _build_character_state_str(cached_state or {}, archetype_key)
+        last_user_msg = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+        char_state = _build_character_state_str(cached_state or {}, archetype_key, last_user_msg)
         normalized = _normalize_history(history)
         chat = [{"role": m["role"], "content": m["content"]} for m in normalized]
         looping = _is_looping(chat)
