@@ -663,6 +663,20 @@ _OPENER_SEXUAL = re.compile(
     re.IGNORECASE,
 )
 
+# Mid-conversation drift patterns — openers containing these are rejected
+# These signal the model is responding to a previous message rather than opening cold
+_OPENER_MIDCONVO = re.compile(
+    r"^(yeah|yep|nah|nope|sure|okay|ok|right|true|lol|lmao|haha|hmm|wait)\b"  # reaction starters
+    r"|as i (said|mentioned|told)"
+    r"|i('ll| will) (take|do|send|pay) (it|that)\b"
+    r"|(that|this) (sounds?|looks?|seems?) (good|great|nice|fine|fair|right)"
+    r"|how much (is|does|would) (it|that)\b"
+    r"|(still|again|also|anyway|btw|so anyway)\b"
+    r"|not (really|interested|sure)\b"
+    r"|(okay|ok) but\b",
+    re.IGNORECASE,
+)
+
 # Archetype-specific opener content validators
 _OPENER_CONTENT_CHECKS: dict[str, "Callable[[str], bool]"] = {
     "casual":     lambda t: not _OPENER_SEXUAL.search(t),
@@ -683,6 +697,10 @@ def _opener_is_valid(text: str, archetype_key: str) -> bool:
     if validator and not validator(text):
         log.warning("[%s] opener failed length check (%d words): %.60s",
                     archetype_key, len(text.split()), text)
+        return False
+    # Mid-conversation drift check — reject if opener looks like a reply to a previous message
+    if _OPENER_MIDCONVO.search(text):
+        log.warning("[%s] opener failed mid-convo check (drift): %.60s", archetype_key, text)
         return False
     # Content check — reject sexual openers for non-horny archetypes
     content_check = _OPENER_CONTENT_CHECKS.get(archetype_key)

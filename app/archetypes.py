@@ -638,37 +638,58 @@ _SUBSCRIBER_OPENER_REMINDERS = {
     "horny": (
         "TASK: Write your FIRST opening DM to Jasmin. You just found her page and you're "
         "already turned on. Be sexually forward immediately — compliment her body, say what "
-        "you want, use explicit language. 1-2 sentences. Casual texting style. Just the message."
+        "you want, use explicit language. 1-2 sentences. Casual texting style. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"okay i've been on ur page for like 20 mins and i genuinely cannot focus on anything else rn 😩🔥\"\n"
+        "- \"ur literally the hottest thing i've seen all week, i need a custom asap 😏\""
     ),
     "cheapskate": (
         "TASK: Write your FIRST opening DM to Jasmin. You just subscribed but the price "
         "already feels steep. Open with interest but immediately bring up price — ask for "
-        "a deal, question the cost, or hint you want something free. 1-2 sentences. Just the message."
+        "a deal, question the cost, or hint you want something free. 1-2 sentences. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"heyy ur actually so pretty omg 😭 just subbed but like... is there any deal for new subs or smth lol\"\n"
+        "- \"hey! just found ur page, ur cute ngl — do u ever do free previews for new followers? 👀\""
     ),
     "casual": (
         "TASK: Write your FIRST opening DM to Jasmin. You just found her page and you're "
         "genuinely curious about her. Be warm and friendly — compliment her vibe, ask how "
-        "she's doing, or ask something genuine about her. 1-2 sentences. Just the message."
+        "she's doing, or ask something genuine about her. 1-2 sentences. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"hey! ur page randomly came up and i'm genuinely obsessed with ur energy lol how r u doing 😊\"\n"
+        "- \"hi! just subbed, u seem really chill — where are u from? 😊\""
     ),
     "troll": (
         "TASK: Write your FIRST opening DM to Jasmin. You think this is a fake account. "
         "Open with skepticism — question if she's real, call her a catfish or bot, be "
-        "sarcastic and provocative. 1-2 sentences. Just the message."
+        "sarcastic and provocative. 1-2 sentences. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"wait ur actually messaging back?? i was 100% sure this was a bot account lmao 😂\"\n"
+        "- \"lol okay so is this actually u or am i talking to a chatbot rn 🙄\""
     ),
     "whale": (
         "TASK: Write your FIRST opening DM to Jasmin. You're a big spender and you want "
         "her most exclusive content. Open by asking for premium/custom content and making "
-        "it clear money is not an issue. 1-2 sentences. Confident tone. Just the message."
+        "it clear money is not an issue. 1-2 sentences. Confident tone. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"hey 👋 just subbed, looks like u got good content. what's the most exclusive stuff u offer? budget's not a concern\"\n"
+        "- \"just found ur page — what does a custom look like and what's ur rate? i'm not here to haggle 💎\""
     ),
     "cold": (
         "TASK: Write your FIRST opening DM to Jasmin. You barely put in any effort. "
-        "Send the shortest possible opener — 1 to 4 words maximum. Just the message."
+        "Send the shortest possible opener — 1 to 4 words maximum. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"hey\"\n"
+        "- \"sup\""
     ),
     "simp": (
         "TASK: Write your FIRST opening DM to Jasmin. You've been on her page for an hour "
         "and you're completely infatuated. Open with intense flattery — tell her she's the "
         "most beautiful person you've ever seen, express how obsessed you are. "
-        "2-3 sentences. Emotional and earnest. Just the message."
+        "2-3 sentences. Emotional and earnest. Just the message.\n"
+        "Examples of correct openers:\n"
+        "- \"i don't usually do this but i had to say something... i've been looking at ur page for like an hour and u are genuinely the most beautiful person i've ever seen 🥺❤️\"\n"
+        "- \"okay i know this is weird but i've been on ur page for ages and i just had to reach out, ur energy is unlike anyone else i've seen on here 😢❤️\""
     ),
 }
 
