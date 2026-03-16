@@ -76,11 +76,12 @@ def init_db() -> None:
     with _lock:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS conversations (
-                id         TEXT PRIMARY KEY,
-                title      TEXT NOT NULL,
-                archetype  TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                id              TEXT PRIMARY KEY,
+                title           TEXT NOT NULL,
+                archetype       TEXT NOT NULL,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                character_state TEXT
             );
 
             CREATE TABLE IF NOT EXISTS messages (
@@ -91,6 +92,12 @@ def init_db() -> None:
                 created_at      TEXT NOT NULL
             );
         """)
+        # Migrate existing DBs that predate the character_state column
+        try:
+            conn.execute("ALTER TABLE conversations ADD COLUMN character_state TEXT")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
 
 
 # ── Conversation CRUD ─────────────────────────────────────────────────────────
