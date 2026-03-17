@@ -1,53 +1,112 @@
-# Subscriber Sim
+# Subscriber Sim 🤖
 
-LoRA fine-tuning pipeline that trains a Jasmin chatbot from real OnlyFans chat data.
+A Streamlit-based chatbot simulator that trains and deploys a LoRA fine-tuned Jasmin model to interact with subscriber archetypes in real-time.
 
 ## What It Does
 
-1. **Data Collection** — A Gradio chat UI where you type as Jasmin while the model plays different subscriber archetypes (horny, cheapskate, casual, troll, whale, cold, simp). Sessions are saved to Google Drive as JSONL.
-2. **Fine-Tuning** — LoRA adapter training on Llama 3.1 8B (4-bit) using parsed chat data + collected sessions. Runs on Colab with Unsloth + SFTTrainer.
-3. **Inference** — The fine-tuned Jasmin model responds autonomously to real subscribers.
-
-## Notebook Cells
-
-| Cell | Purpose |
-|------|---------|
-| 0 | Colab bootstrap — install deps, restart kernel |
-| 1 | Imports + Google Drive mount |
-| 2 | Load Llama 3.1 8B via Unsloth (`TRAINING_MODE` flag) |
-| 3 | Subscriber archetype definitions (7 types) |
-| 4 | Subscriber bot logic + session save/export |
-| 5 | Gradio subscriber sim (data collection mode) |
-| 6 | LoRA adapter setup (r=16, targets q/k/v/o/gate/up/down) |
-| 7 | Load & format training data from `sessions.jsonl` |
-| 8 | SFTTrainer — 3 epochs, batch=2, grad_accum=4, lr=2e-4 |
-| 9 | Inference test with sample prompts |
-| 10 | Subscriber sim (post-training, keep collecting data) |
-
-## Training Flow
-
-```
-Set TRAINING_MODE = True → Run Cells 0-4, 6-9 → Fine-tune
-Set TRAINING_MODE = False → Run Cells 0-5 or 10 → Collect data / chat
-```
-
-## Data
-
-- `data/sessions.jsonl` — 256 pre-parsed sessions (8,496 turns) from real chat exports
-- Additional sessions saved via the Gradio UI go to Google Drive
-
-### Role Mapping
-
-In the Gradio UI, you type as Jasmin (`user`) and the model responds as a subscriber (`assistant`). When saving to JSONL for training, roles are **flipped** so the model learns to be Jasmin:
-
-| Gradio | Saved JSONL | Who |
-|--------|-------------|-----|
-| user | assistant | Jasmin (you) |
-| assistant | user | Subscriber (model) |
+1. **Interactive Chat Simulation** — A Streamlit app where you interact with a fine-tuned Jasmin model that responds to different subscriber archetypes (horny, cheapskate, casual, troll, whale, cold, simp). Chat history is persisted in a SQLite database.
+2. **Model Inference** — Local LLM inference using MLX (Apple Silicon optimized) or cloud GPU backends. Fine-tuned LoRA adapters loaded dynamically.
+3. **Data Persistence** — SQLite database stores conversations, session metadata, and interaction logs for analytics and training data collection.
+4. **Archetype Management** — 7 predefined subscriber personas with distinct personality traits, spending patterns, and communication styles.
 
 ## Stack
 
-- [Unsloth](https://github.com/unslothai/unsloth) — 4-bit model loading + LoRA
-- [trl](https://github.com/huggingface/trl) — SFTTrainer
-- [Gradio](https://gradio.app) — Chat UI
-- Google Colab — GPU runtime + Drive storage
+**Frontend & App:**
+- [Streamlit](https://streamlit.io/) — Interactive web UI for chat simulation
+- [Material Symbols](https://fonts.google.com/icons) — Icon library
+
+**Model & Inference:**
+- [Llama 3.1 8B](https://huggingface.co/meta-llama/Llama-2-7b-hf) — Base model (4-bit quantized)
+- [Unsloth](https://github.com/unslothai/unsloth) — Efficient LoRA training
+- [MLX](https://ml-explore.github.io/mlx/build/html/index.html) — Apple Silicon optimized inference (macOS)
+- [Transformers](https://huggingface.co/transformers/) — Model loading & tokenization
+
+**Data & Storage:**
+- [SQLite](https://www.sqlite.org/) — Lightweight database for chat history & metadata
+- JSONL files — Training data format
+
+**Infrastructure:**
+- Docker & Docker Compose — Containerized deployment
+- Modal / Streamlit Cloud — Cloud deployment targets
+
+## Quick Start
+
+### Local Development
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/Inventiv-PH/subscriber-sim.git
+cd subscriber-sim
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Run the app
+streamlit run app/main.py
+```
+
+### Using Make (recommended)
+
+```bash
+make setup      # Setup venv and dependencies
+make server     # Start MLX inference server
+make app        # Start Streamlit app in another terminal
+```
+
+### Docker
+
+```bash
+docker-compose up --build
+```
+
+**Full setup guide**: See [docs/QUICK_START.md](docs/QUICK_START.md)
+
+## Documentation
+
+- **[docs/README.md](docs/README.md)** — Documentation index and navigation
+- **[docs/QUICK_START.md](docs/QUICK_START.md)** — Setup and deployment options
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design and components
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — Code patterns, contributing guidelines
+- **[TODO.md](TODO.md)** — Roadmap and task tracking
+
+## Project Structure
+
+```
+subscriber-sim/
+├── app/                          # Streamlit application
+│   ├── main.py                   # Entry point, UI layout
+│   ├── archetypes.py             # Subscriber personality definitions
+│   ├── inference.py              # LLM inference logic
+│   └── database.py               # SQLite operations
+├── data/                         # Training data & chat logs
+├── models/                       # Fine-tuned LoRA adapters
+├── docs/                         # Documentation
+├── scripts/                      # Utility scripts
+├── Dockerfile                    # Container definition
+├── docker-compose.yml            # Multi-container setup
+├── requirements.txt              # Python dependencies
+├── TODO.md                       # Roadmap and tasks
+└── README.md                     # This file
+```
+
+## Contributing
+
+We welcome contributions! See [DEVELOPMENT.md](docs/DEVELOPMENT.md#contributing) for guidelines.
+
+## Task Tracking
+
+This project uses GitHub issues for tracking. To sync GitHub issues to local tracking:
+
+```bash
+# Make sync script executable (one time)
+chmod +x scripts/sync-todos.sh
+
+# Sync issues to TODO.md
+./scripts/sync-todos.sh
+```
+
+For manual tracking, edit [TODO.md](TODO.md) directly.
+
+## License
+
+This project is proprietary. See LICENSE file for details.

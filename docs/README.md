@@ -1,6 +1,6 @@
-# Documentation Index
+# 📚 Subscriber Sim Documentation
 
-Welcome to the Subscriber Sim documentation! This directory contains comprehensive guides for understanding, using, and developing this project.
+Welcome to the Subscriber Sim documentation! Find guides for understanding, using, and developing a Streamlit-based chatbot simulator that trains and deploys fine-tuned Jasmin models to interact with subscriber archetypes.
 
 ---
 

@@ -564,15 +564,64 @@ def _params(archetype_key: str) -> dict:
 
 
 def _normalize_history(history: list[dict]) -> list[dict]:
-    """tail(8) context window — contiguous recent turns, no gap.
+    """tail(16) context window — contiguous recent turns, no gap.
 
-    Training sessions were typically 5-10 turns. Larger windows trigger
-    memorization: the model pattern-matches a training session and reproduces
-    multiple turns instead of generating a single reply. Archetype grounding
-    is covered by [CONV STATE] + mid-convo reminder, not the window size.
+    Increased from 8 to 16 messages (8 turns) to prevent context drift in LoRA inference.
+    The additional context prevents the model from losing archetype consistency mid-conversation.
+    Archetype grounding is reinforced by [CONV STATE] + mid-convo reminder + system prompt re-injection.
+    
+    Training sessions were typically 5-10 turns, but Streamlit conversations can extend 15+ turns.
+    The larger window is necessary for LoRA adapters to maintain character over extended conversations.
     """
-    return history[-8:]
+    return history[-16:]
 
+
+def _build_messages_with_system_reinject(
+    chat: list[dict],
+    archetype_key: str,
+    char_state: str | None = None,
+) -> list[dict]:
+    """Build message list with periodic system prompt re-injection.
+    
+    Re-injects the full system prompt every 2 assistant turns to prevent
+    LoRA prompt decay in extended conversations. This is critical for maintaining
+    character consistency over 12+ turns.
+    
+    Args:
+        chat: Normalized conversation history (already processed)
+        archetype_key: Subscriber archetype (used to fetch system prompt)
+        char_state: Optional enhanced character state string to append to system
+    
+    Returns:
+        List of messages with system prompt strategically re-injected
+    """
+    system = get_subscriber_system(archetype_key)
+    if char_state:
+        system += "\n\n" + char_state
+    
+    # Count assistant turns to determine re-injection points
+    asst_turns = sum(1 for m in chat if m["role"] == "assistant")
+    
+    # Always prepend system at the start
+    messages = [{"role": "system", "content": system}]
+    
+    # Add chat messages, re-injecting system every 2 assistant turns
+    for i, msg in enumerate(chat):
+        messages.append(msg)
+        
+        # Check if we should inject system prompt after this message
+        if msg["role"] == "assistant":
+            # Count assistant turns up to this point
+            asst_count = sum(1 for m in chat[:i+1] if m["role"] == "assistant")
+            # Re-inject after every 2nd assistant turn (at turns 2, 4, 6, 8, etc.)
+            if asst_count > 0 and asst_count % 2 == 0:
+                # Insert system prompt before the next user message (if it exists)
+                # This maintains Llama-3 alternation (system → user → assistant → user → ...)
+                if i + 1 < len(chat) and chat[i + 1]["role"] == "user":
+                    messages.append({"role": "system", "content": system})
+                    log.debug("re-injected system prompt after assistant turn %d", asst_count)
+    
+    return messages
 
 
 # ── MLX local backend ─────────────────────────────────────────────────────────
@@ -607,17 +656,18 @@ def _stream_mlx(history: list[dict], archetype_key: str, cached_state: dict | No
             chat = [{"role": "user", "content": "[NEW SUBSCRIBER]"}] + chat
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
-        system = get_subscriber_system(archetype_key)
-        if char_state:
-            system += "\n\n" + char_state
-        messages = [{"role": "system", "content": system}] + chat
+        
+        # Use new helper for system prompt re-injection every 2 turns
+        messages = _build_messages_with_system_reinject(chat, archetype_key, char_state)
+        
         prefill = get_subscriber_prefill(archetype_key)
         if prefill and (not messages or messages[-1]["role"] != "assistant"):
             messages.append({"role": "assistant", "content": prefill})
         p = _params(archetype_key)
         if looping:
             p = {**p, "rep_pen": min(p["rep_pen"] + 0.20, 1.40), "temperature": min(p["temperature"] + 0.15, 1.0)}
-        log.info("MLX system: %d chars | msgs: %d", len(system), len(messages))
+        log.info("MLX params: max_tokens=%s temp=%.2f top_p=%.2f rep_pen=%.2f | msgs: %d", 
+                 p["max_tokens"], p["temperature"], p["top_p"], p["rep_pen"], len(messages))
         yield _mlx_chat(messages, max_tokens=p["max_tokens"], temperature=p["temperature"], top_p=p["top_p"], rep_pen=p["rep_pen"])
     except Exception as e:
         log.error("MLX server error: %s", e, exc_info=True)
@@ -791,11 +841,10 @@ def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | 
             chat = [{"role": "user", "content": "[NEW SUBSCRIBER]"}] + chat
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
-        system = get_subscriber_system(archetype_key)
-        if char_state:
-            system += "\n\n" + char_state
-            log.info("injected char state: %s", char_state)
-        messages = [{"role": "system", "content": system}] + chat
+        
+        # Use new helper for system prompt re-injection every 2 turns
+        messages = _build_messages_with_system_reinject(chat, archetype_key, char_state)
+        
         # Inject prefill as a partial assistant turn — forces the model to continue
         # from an in-character seed token (e.g. "lol " for troll, "omg " for horny).
         # This is the strongest single-token archetype lock available at inference time.
@@ -810,9 +859,8 @@ def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | 
                 "rep_pen":     min(p["rep_pen"] + 0.20, 1.40),
                 "temperature": min(p["temperature"] + 0.15, 1.0),
             }
-        log.info("system prompt: %d chars | msgs to model: %d", len(system), len(messages))
-        log.info("params: max_tokens=%s temp=%.2f top_p=%.2f rep_pen=%.2f",
-                 p["max_tokens"], p["temperature"], p["top_p"], p["rep_pen"])
+        log.info("modal params: max_tokens=%s temp=%.2f top_p=%.2f rep_pen=%.2f | msgs: %d",
+                 p["max_tokens"], p["temperature"], p["top_p"], p["rep_pen"], len(messages))
         log.debug("last user msg: %.200s", chat[-1]["content"] if chat else "(empty)")
         for token in model.generate.remote_gen(
             messages,
