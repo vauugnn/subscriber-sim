@@ -1,3 +1,4 @@
+
 # 📋 TODO & Roadmap
 
 **Last Updated**: 2026-03-17  
@@ -7,8 +8,28 @@
 
 ## 🔴 High Priority (Current Sprint)
 
+### 🐛 Inference Issue Diagnosis & Fix
+**Status**: Starting 2026-03-18  
+**Goal**: Root cause analysis and fixes for response repetition (Colab) and context drift (Streamlit)  
+**Owner**: @jaimeemanuellucero  
+**Tracking**: [Inference Diagnosis Epic](https://github.com/Inventiv-PH/subscriber-sim/issues)
+
+**Phase 1: Root Cause Diagnosis**
+- [ ] **[PRIORITY] Export Colab conversation logs** — Capture full prompts, raw outputs, filtered outputs. Document repetition pattern after 5-8 turns. Add debug logging to subscriber_sim.ipynb Cell 9.
+- [ ] **Analyze generation parameters** — Compare Colab (working) vs Streamlit params. Check temperature, top_p, rep_pen, max_tokens. Hypothesis: low rep_pen causes repetition.
+- [ ] **Inspect prompt construction** — Compare Colab vs Streamlit prompt formats. Verify system prompts, mid-conversation reminders, stop tokens.
+- [ ] **Analyze response filtering** — Check if _filter_response() is too aggressive. Test disabling filters to isolate their impact.
+- [ ] **Test context window size** — Current: 16 messages. Test 16 vs 24 vs 32. Measure character consistency and context retention.
+- [ ] **Compare LoRA adapter formats** — PEFT (HuggingFace) vs MLX (exported). Investigate convert_adapter_to_mlx.py for lossy transformation.
+- [ ] **Verify parameter parity** — Run Colab with Streamlit params. Run Streamlit with Colab params. Document what changes behavior.
+- [ ] **Isolate backend vs adapter** — Test MLX with small context. Test Modal backend. Determine if issue is backend or adapter-specific.
+
+**Phase 2: Implementation** (depends on Phase 1 findings)
+- [ ] Implement fixes based on root cause findings
+- [ ] A/B test all 7 archetypes with both backends
+- [ ] Document before/after examples
+
 ### Core Features
-- [ ] **Refine inference pipeline** — Optimize LLM response generation with streaming output
 - [ ] **Enhance database queries** — Add indexing and caching for frequently accessed conversations
 - [ ] **Improve UI/UX** — Better sidebar navigation and session management in Streamlit
 
@@ -106,14 +127,15 @@ If you prefer to manually track GitHub issues:
 
 | Metric | Count |
 |--------|-------|
-| **High Priority** | 3 items |
+| **High Priority** | 17 items |
 | **Medium Priority** | 7 items |
 | **Low Priority** | 8 items |
 | **In Progress** | 0 items |
 | **Completed** | 6 items |
-| **Total** | 24 items |
+| **Total** | 38 items |
 
-**Completion Rate**: 25% ✓
+**Completion Rate**: 16% ✓  
+**Current Focus**: Inference Issue Diagnosis (8 investigation tasks)
 
 ---
 

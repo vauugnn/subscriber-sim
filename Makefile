@@ -21,7 +21,8 @@ NC     := \033[0m
 
 .DEFAULT_GOAL := help
 .PHONY: help setup convert server app docker-build docker-up docker-down \
-        logs clean clean-all parse modal-setup modal-deploy modal-serve
+        logs clean clean-all parse modal-setup modal-deploy modal-serve \
+        todos-sync todos-list todos-status
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 help:
@@ -42,6 +43,12 @@ help:
 	@printf "  $(GREEN)make modal-serve$(NC)    Run Modal server locally for testing\n"
 	@printf "\n$(CYAN)Data$(NC)\n"
 	@printf "  $(GREEN)make parse$(NC)          Parse raw chat exports → data/sessions.jsonl\n"
+	@printf "\n$(CYAN)Todo Sync (GitHub Issues)$(NC)\n"
+	@printf "  $(GREEN)make todos-sync$(NC)      Sync GitHub issues ↔ TODO.md (bidirectional)\n"
+	@printf "  $(GREEN)make todos-push$(NC)      Push local TODO.md changes → GitHub issues\n"
+	@printf "  $(GREEN)make todos-pull$(NC)      Pull GitHub issues → TODO.md\n"
+	@printf "  $(GREEN)make todos-list$(NC)      List all open GitHub issues\n"
+	@printf "  $(GREEN)make todos-status$(NC)    Show sync status\n"
 	@printf "\n$(CYAN)Clean$(NC)\n"
 	@printf "  $(GREEN)make clean$(NC)          Remove converted MLX adapter + chat DB\n"
 	@printf "  $(GREEN)make clean-all$(NC)      Remove venv + all generated files\n"
@@ -125,6 +132,44 @@ parse: $(STAMP)
 	@printf "$(YELLOW)Parsing raw chat exports → data/sessions.jsonl…$(NC)\n"
 	$(VENV_PY) scripts/parse_chats.py
 	@printf "$(GREEN)✅ Done$(NC)\n"
+
+# ── Todo Sync ─────────────────────────────────────────────────────────────────
+todos-sync:
+	@if [ ! -f scripts/sync-todos.sh ]; then \
+		printf "$(CYAN)Creating sync script…$(NC)\n"; \
+		mkdir -p scripts; \
+		chmod +x scripts/sync-todos.sh; \
+	fi
+	@printf "$(YELLOW)Syncing GitHub issues ↔ TODO.md…$(NC)\n"
+	@bash scripts/sync-todos.sh
+	@printf "$(GREEN)✅ Sync complete$(NC)\n"
+
+todos-pull:
+	@printf "$(YELLOW)Pulling GitHub issues → TODO.md…$(NC)\n"
+	@bash scripts/sync-todos.sh --pull-only
+	@printf "$(GREEN)✅ Pull complete$(NC)\n"
+
+todos-push:
+	@printf "$(YELLOW)Pushing TODO.md changes → GitHub issues…$(NC)\n"
+	@bash scripts/sync-todos.sh --push-only
+	@printf "$(GREEN)✅ Push complete$(NC)\n"
+
+todos-list:
+	@printf "$(CYAN)Open GitHub Issues:$(NC)\n"
+	@gh issue list --state open --limit 20
+	@printf "\n$(CYAN)Closed GitHub Issues (last 10):$(NC)\n"
+	@gh issue list --state closed --limit 10
+
+todos-status:
+	@printf "$(CYAN)TODO.md Sync Status$(NC)\n"
+	@if [ -f TODO.md ]; then \
+		printf "$(GREEN)✓$(NC) TODO.md exists\n"; \
+		grep -E "Last Updated|Sync Status" TODO.md || echo "  (No timestamp found)"; \
+	else \
+		printf "$(YELLOW)✗ TODO.md not found$(NC)\n"; \
+	fi
+	@printf "\n$(CYAN)GitHub Issue Summary:$(NC)\n"
+	@gh issue list --state open --limit 1 2>/dev/null | wc -l | xargs -I {} printf "  Open issues: {}\n" || echo "  (gh CLI not configured)"
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 clean:
