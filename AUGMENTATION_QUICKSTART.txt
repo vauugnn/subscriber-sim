@@ -1,0 +1,155 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║               AUGMENTATION WORKFLOW QUICK START                          ║
+║          Archetype-Specific General Conversation Training Data           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+WHAT THIS DOES:
+===============
+Adds 225 high-quality augmented conversations that teach the model to:
+  ✓ Stay in character (role confusion fix)
+  ✓ Handle general chat naturally within archetype
+  ✓ Distinguish archetype boundaries
+  ✓ Less memorization
+
+═══════════════════════════════════════════════════════════════════════════
+
+STEP 1: LOCAL (M1 Mac) — 1 minute
+═════════════════════════════════
+
+$ make augment
+
+Creates 75 general conversation templates in chat_data/
+
+Output: chat_data/general_100.txt → general_174.txt (75 files)
+
+Verify:
+$ ls -1 chat_data/general_*.txt | wc -l
+→ Should show: 75
+
+═══════════════════════════════════════════════════════════════════════════
+
+STEP 2: UPLOAD TO GOOGLE DRIVE — 5 minutes
+═════════════════════════════════════════
+
+Upload entire chat_data/ folder to:
+  /content/drive/MyDrive/subscriber-sim/chat_data/
+
+Make sure it contains:
+  ✓ Original chat files (1.txt, 2.txt, etc.)
+  ✓ Augmented templates (general_100.txt → general_174.txt)
+
+═══════════════════════════════════════════════════════════════════════════
+
+STEP 3: COLAB — GPU-POWERED AUGMENTATION — 15 minutes
+═════════════════════════════════════════════════════
+
+In your Colab notebook, ADD A NEW CELL before training and run:
+
+```python
+# Mount Drive
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Run augmentation script
+exec(open('/content/drive/MyDrive/subscriber-sim/scripts/colab_augment_generate.py').read())
+```
+
+This generates 225 augmented files:
+  ✓ casual_200.txt → casual_274.txt (75 augmented casual responses)
+  ✓ simp_200.txt → simp_274.txt (75 augmented simp responses)
+  ✓ horny_200.txt → horny_274.txt (75 augmented horny responses)
+
+═══════════════════════════════════════════════════════════════════════════
+
+STEP 4: PARSE & SPLIT — IN COLAB — 2 minutes
+═════════════════════════════════════════════
+
+After augmentation finishes, run in Colab:
+
+```bash
+!cd /content/drive/MyDrive/subscriber-sim && make parse
+!cd /content/drive/MyDrive/subscriber-sim && make split
+```
+
+This creates:
+  ✓ data/mlx/train.jsonl (augmented data mixed with original)
+  ✓ data/mlx/valid.jsonl (balanced split)
+
+═══════════════════════════════════════════════════════════════════════════
+
+STEP 5: TRAIN — IN COLAB — Normal
+════════════════════════════════════
+
+Run the training cell (Cell 5) as normal.
+
+Model will now train on:
+  ✓ Original OnlyFans chats
+  ✓ Augmented archetype-specific responses
+  ✓ Strong role declaration prompts
+  ✓ Balanced archetype distribution
+
+═══════════════════════════════════════════════════════════════════════════
+
+EXPECTED IMPROVEMENTS:
+══════════════════════
+
+Before:
+  ✗ Role confusion (responds as Jasmin sometimes)
+  ✗ Memorization (repeats training patterns)
+  ✗ Imbalanced (horny = 50% of data)
+
+After:
+  ✓ Clear role separation (trained with "YOU ARE the subscriber...")
+  ✓ Natural general conversation within archetype
+  ✓ Learns archetype boundaries
+  ✓ Balanced distribution (horny capped at 27%)
+
+═══════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+════════════════
+
+Q: Colab augmentation runs very slowly
+A: This is normal. Generating 225 responses takes 10-15 min on GPU.
+
+Q: Make parse fails
+A: Verify all .txt files in chat_data/ have format:
+   HH:MM am/pm
+   content
+   HH:MM am/pm
+   content
+
+Q: Error about "app.archetypes"
+A: Verify /content/drive/MyDrive/subscriber-sim/app/archetypes.py exists
+
+Q: What's the difference from before?
+A: Now you have:
+   - Archetype-specific general responses (not just generic)
+   - GPU generates high-quality responses (not just templates)
+   - 225 augmented samples (instead of 0)
+
+═══════════════════════════════════════════════════════════════════════════
+
+FILES REFERENCE:
+════════════════
+
+Key scripts:
+  scripts/augment_data.py           → creates general conversation templates
+  scripts/colab_augment_generate.py → generates archetype-specific responses (Colab)
+  scripts/parse_chats.py            → parses with strong system prompts
+  scripts/prepare_split.py          → balances and creates split
+
+Full guide:
+  docs/AUGMENTATION_WORKFLOW.md
+
+═══════════════════════════════════════════════════════════════════════════
+
+READY? Let's go!
+
+$ make augment
+  → Then upload to Drive
+  → Then run Colab augment cell
+  → Then !make parse && !make split
+  → Then train!
+
+═══════════════════════════════════════════════════════════════════════════

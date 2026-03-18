@@ -12,9 +12,16 @@ written to a separate JSONL file (e.g. data/horny.jsonl, data/cold.jsonl).
 import json
 import random
 import re
+import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# ── Import subscriber system prompts from app/ ──────────────────────────
+_APP_DIR = str(Path(__file__).resolve().parent.parent / "app")
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+from archetypes import get_subscriber_system
 
 # ── Paths ───────────────────────────────────────────────────────────────
 CHAT_DIR = Path(__file__).resolve().parent.parent / "chat_data"
@@ -913,9 +920,9 @@ def build_session_record(messages: list[dict], source_file: str, confidence: str
     # Auto-classify this session's archetype from subscriber content
     archetype = classify_archetype(clean_messages)
 
-    # Prepend archetype-specific system prompt
+    # Prepend archetype-specific system prompt (using the strong inference-time prompt)
     full_messages = [
-        {"role": "system", "content": ARCHETYPE_PROMPTS[archetype]},
+        {"role": "system", "content": get_subscriber_system(archetype)},
     ] + clean_messages
 
     # Ensure first non-system message is "user" (Jasmin/creator).
@@ -1010,8 +1017,17 @@ def main():
         "validation_issues": 0,
     }
 
-    # Process all txt files
-    for txt_file in sorted(CHAT_DIR.glob("*.txt"), key=lambda f: int(f.stem)):
+    # Process all txt files (sort: numeric files first, then alphanumeric)
+    def sort_key(f):
+        stem = f.stem
+        # Try to parse as int for numeric files (1.txt, 2.txt, etc.)
+        try:
+            return (0, int(stem))
+        except ValueError:
+            # Alphanumeric files (general_100.txt, etc.) come after
+            return (1, stem)
+
+    for txt_file in sorted(CHAT_DIR.glob("*.txt"), key=sort_key):
         filename = txt_file.name
         print(f"Processing {filename}...", end=" ")
 

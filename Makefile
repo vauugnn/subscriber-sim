@@ -21,7 +21,7 @@ NC     := \033[0m
 
 .DEFAULT_GOAL := help
 .PHONY: help setup convert server app docker-build docker-up docker-down \
-        logs clean clean-all parse modal-setup modal-deploy modal-serve \
+        logs clean clean-all parse augment split modal-setup modal-deploy modal-serve \
         todos-sync todos-list todos-status
 
 # ── Help ──────────────────────────────────────────────────────────────────────
@@ -42,7 +42,9 @@ help:
 	@printf "  $(GREEN)make modal-deploy$(NC)   Deploy inference server to Modal cloud\n"
 	@printf "  $(GREEN)make modal-serve$(NC)    Run Modal server locally for testing\n"
 	@printf "\n$(CYAN)Data$(NC)\n"
-	@printf "  $(GREEN)make parse$(NC)          Parse raw chat exports → data/sessions.jsonl\n"
+	@printf "  $(GREEN)make augment$(NC)        Create general conversation templates (chat_data/general_*.txt)\n"
+	@printf "  $(GREEN)make parse$(NC)          Parse ALL chat exports → data/<archetype>.jsonl\n"
+	@printf "  $(GREEN)make split$(NC)          Balance archetypes → data/mlx/train.jsonl + valid.jsonl\n"
 	@printf "\n$(CYAN)Todo Sync (GitHub Issues)$(NC)\n"
 	@printf "  $(GREEN)make todos-sync$(NC)      Sync GitHub issues ↔ TODO.md (bidirectional)\n"
 	@printf "  $(GREEN)make todos-push$(NC)      Push local TODO.md changes → GitHub issues\n"
@@ -129,9 +131,19 @@ modal-serve:
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 parse: $(STAMP)
-	@printf "$(YELLOW)Parsing raw chat exports → data/sessions.jsonl…$(NC)\n"
+	@printf "$(YELLOW)Parsing raw chat exports → data/<archetype>.jsonl…$(NC)\n"
 	$(VENV_PY) scripts/parse_chats.py
-	@printf "$(GREEN)✅ Done$(NC)\n"
+	@printf "$(GREEN)✅ Done — data/<archetype>.jsonl written with strong system prompts$(NC)\n"
+
+augment: $(STAMP)
+	@printf "$(YELLOW)Creating general conversation templates…$(NC)\n"
+	$(VENV_PY) scripts/augment_data.py
+	@printf "$(GREEN)✅ Done — chat_data/general_*.txt files created$(NC)\n"
+
+split: $(STAMP)
+	@printf "$(YELLOW)Balancing archetypes + writing train/valid split…$(NC)\n"
+	$(VENV_PY) scripts/prepare_split.py
+	@printf "$(GREEN)✅ Done — data/mlx/train.jsonl and data/mlx/valid.jsonl written$(NC)\n"
 
 # ── Todo Sync ─────────────────────────────────────────────────────────────────
 todos-sync:
