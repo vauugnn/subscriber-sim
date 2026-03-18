@@ -21,7 +21,7 @@ NC     := \033[0m
 
 .DEFAULT_GOAL := help
 .PHONY: help setup convert server app docker-build docker-up docker-down \
-        logs clean clean-all parse augment split modal-setup modal-deploy modal-serve \
+        logs clean clean-all parse augment augment-dataset merge-augmented split build-data modal-setup modal-deploy modal-serve \
         todos-sync todos-list todos-status
 
 # ── Help ──────────────────────────────────────────────────────────────────────
@@ -42,9 +42,11 @@ help:
 	@printf "  $(GREEN)make modal-deploy$(NC)   Deploy inference server to Modal cloud\n"
 	@printf "  $(GREEN)make modal-serve$(NC)    Run Modal server locally for testing\n"
 	@printf "\n$(CYAN)Data$(NC)\n"
-	@printf "  $(GREEN)make augment$(NC)        Create general conversation templates (chat_data/general_*.txt)\n"
-	@printf "  $(GREEN)make parse$(NC)          Parse ALL chat exports → data/<archetype>.jsonl\n"
-	@printf "  $(GREEN)make split$(NC)          Balance archetypes → data/mlx/train.jsonl + valid.jsonl\n"
+	@printf "  $(GREEN)make build-data$(NC)       Run full pipeline (parse → augment → merge → split)\n"
+	@printf "  $(GREEN)make parse$(NC)            Parse ALL chat exports → data/<archetype>.jsonl\n"
+	@printf "  $(GREEN)make augment-dataset$(NC)  Generate synthetic augmented conversations\n"
+	@printf "  $(GREEN)make merge-augmented$(NC)  Merge augmented data with original\n"
+	@printf "  $(GREEN)make split$(NC)            Balance archetypes → data/mlx/train.jsonl + valid.jsonl\n"
 	@printf "\n$(CYAN)Todo Sync (GitHub Issues)$(NC)\n"
 	@printf "  $(GREEN)make todos-sync$(NC)      Sync GitHub issues ↔ TODO.md (bidirectional)\n"
 	@printf "  $(GREEN)make todos-push$(NC)      Push local TODO.md changes → GitHub issues\n"
@@ -140,10 +142,32 @@ augment: $(STAMP)
 	$(VENV_PY) scripts/augment_data.py
 	@printf "$(GREEN)✅ Done — chat_data/general_*.txt files created$(NC)\n"
 
+augment-dataset: $(STAMP)
+	@printf "$(YELLOW)Generating synthetic augmented conversations…$(NC)\n"
+	$(VENV_PY) scripts/augment_synthetic.py
+	@printf "$(GREEN)✅ Done — data/*_augmented.jsonl files created$(NC)\n"
+
+merge-augmented: $(STAMP)
+	@printf "$(YELLOW)Merging augmented data with original…$(NC)\n"
+	$(VENV_PY) scripts/merge_augmented.py
+	@printf "$(GREEN)✅ Done — augmented data merged$(NC)\n"
+
 split: $(STAMP)
 	@printf "$(YELLOW)Balancing archetypes + writing train/valid split…$(NC)\n"
 	$(VENV_PY) scripts/prepare_split.py
 	@printf "$(GREEN)✅ Done — data/mlx/train.jsonl and data/mlx/valid.jsonl written$(NC)\n"
+
+build-data: $(STAMP)
+	@printf "$(YELLOW)Running full data pipeline…$(NC)\n"
+	@printf "  1. Parsing raw chat exports…\n"
+	$(VENV_PY) scripts/parse_chats.py
+	@printf "  2. Generating augmented conversations…\n"
+	$(VENV_PY) scripts/augment_synthetic.py
+	@printf "  3. Merging augmented data with original…\n"
+	$(VENV_PY) scripts/merge_augmented.py
+	@printf "  4. Creating balanced train/valid split…\n"
+	$(VENV_PY) scripts/prepare_split.py
+	@printf "$(GREEN)✅ Done — Ready to train!$(NC)\n"
 
 # ── Todo Sync ─────────────────────────────────────────────────────────────────
 todos-sync:

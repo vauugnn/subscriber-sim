@@ -26,15 +26,16 @@ from archetypes import get_subscriber_system
 
 # ── Configuration ────────────────────────────────────────────────────────
 # Strategic augmentation to balance archetype distribution
-# Skip horny (already 33%), boost underrepresented ones
+# Target: horny=27%, simp=20%, casual=18%, cheapskate=15%, whale=8%, cold=7%, troll=5%
+# Current: horny=33%, simp=25%, casual=18%, cheapskate=16%, whale=5%, cold=3%, troll=1%
 AUGMENTATION_CONFIG = {
-    "troll": {"count": 75, "weight": 3.0},      # Underrepresented: boost 3x
-    "whale": {"count": 75, "weight": 2.0},      # Underrepresented: boost 2x
-    "cold": {"count": 75, "weight": 2.5},       # Underrepresented: boost 2.5x
-    "casual": {"count": 50, "weight": 1.0},     # Moderate boost
-    "cheapskate": {"count": 50, "weight": 1.0}, # Moderate boost
-    "simp": {"count": 50, "weight": 1.0},       # Moderate boost
-    # "horny": skip (already 33% of data)
+    "troll": {"count": 80, "weight": 1.0},      # 18 → 98 (boost 5.4x)
+    "whale": {"count": 80, "weight": 1.0},      # 70 → 150 (boost 2.1x)
+    "cold": {"count": 85, "weight": 1.0},       # 48 → 133 (boost 2.8x)
+    "casual": {"count": 75, "weight": 1.0},     # 268 → 343 (boost 1.3x)
+    "cheapskate": {"count": 40, "weight": 1.0}, # 248 → 288 (boost 1.2x)
+    "simp": {"count": 0, "weight": 1.0},        # 378 → 378 (already large)
+    # "horny": skip (500 capped, already dominant)
 }
 ARCHETYPES_TO_AUGMENT = list(AUGMENTATION_CONFIG.keys())
 MAX_DIALOGUES = 500  # Process first 500 augmented dialogues

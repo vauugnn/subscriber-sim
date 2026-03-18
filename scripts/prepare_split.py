@@ -13,15 +13,16 @@ from pathlib import Path
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MLX_DIR = DATA_DIR / "mlx"
 
-# Archetype caps to prevent over-representation
+# Archetype caps for balanced distribution (~14% each with 7 archetypes)
+# Target: ~240 sessions per archetype → 1,680 total (90/10 split = 1,512 train, 168 valid)
 ARCHETYPE_CAPS = {
-    "horny": 500,           # was 1,836 — cap at 500 to prevent domination
-    "casual": None,         # no cap — keep all (268 domain + up to 350 augmented)
-    "simp": None,           # no cap — keep all (378)
-    "cheapskate": None,     # no cap — keep all (248)
-    "whale": None,          # no cap — keep all (70)
-    "cold": None,           # no cap — keep all (48)
-    "troll": None,          # no cap — keep all (18)
+    "horny": 240,           # was 1,836 → cap at 240
+    "simp": 240,            # was 378 → cap at 240
+    "casual": 240,          # was 343 (with augment) → cap at 240
+    "cheapskate": 240,      # was 288 (with augment) → cap at 240
+    "whale": 240,           # was 150 (with augment) → cap at 240
+    "cold": 240,            # was 133 (with augment) → cap at 240
+    "troll": 240,           # was 98 (with augment) → cap at 240
 }
 
 TRAIN_FRACTION = 0.90
@@ -77,16 +78,10 @@ def main():
 
         all_sessions[archetype] = sessions
 
-    # Load augmented general data and add to casual
+    # Note: Augmented data is already mixed into per-archetype JSONL files
+    # (via make merge-augmented which merges *_augmented.jsonl files)
     print()
-    print("Loading augmented data...")
-    general_file = DATA_DIR / "general_casual.jsonl"
-    if general_file.exists():
-        general_sessions = load_jsonl(general_file)
-        print(f"  general_casual: {len(general_sessions):4d} sessions")
-        all_sessions["casual"].extend(general_sessions)
-    else:
-        print(f"  general_casual: NOT FOUND (run 'make augment' first)")
+    print("Augmented data status:")
 
     # Combine and shuffle
     print()
