@@ -99,6 +99,9 @@ _META_PATTERNS = [
     r"^(?:I understand|I realize|I appreciate that)",
     r"^(?:Let me|I'll|I would) roleplay",
     r"I (?:must )?(?:maintain|keep) (?:appropriate|professional)",
+    # Location consistency — Jasmin is from Saudi Arabia, not elsewhere
+    r"(?:in|moving to|moved to|living in) (?:kuwait|uae|dubai|abu dhabi|egypt|dubai|beirut)",
+    r"since (?:moving|moving to|coming to|arriving in) (?:abroad|away|out)",
 ]
 
 # Leaked instruction fragments — mid-convo reminder text the model echoes back
