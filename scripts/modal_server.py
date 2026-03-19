@@ -120,13 +120,15 @@ class JasminModel:
                 )
             new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
             text_out = self.tokenizer.decode(new_ids, skip_special_tokens=True)
-            # Strip prefill if model regenerated it
-            if prefill and text_out.startswith(prefill):
-                text_out = text_out[len(prefill):]
+            # Strip prefill if model regenerated it (check multiple times for robustness)
+            if prefill:
+                text_out = text_out.lstrip()  # strip leading whitespace first
+                if text_out.startswith(prefill):
+                    text_out = text_out[len(prefill):].lstrip()
             for s in stop:
                 if s in text_out:
                     text_out = text_out[:text_out.index(s)]
-            yield text_out
+            yield text_out.strip() if text_out else text_out
             return
 
         streamer = TextIteratorStreamer(
@@ -153,12 +155,15 @@ class JasminModel:
         for token in streamer:
             buf += token
             # Strip prefill if model regenerated it (only check once at start)
-            if prefill and not prefill_stripped and buf.startswith(prefill):
-                buf = buf[len(prefill):]
-                prefill_stripped = True
+            if prefill and not prefill_stripped:
+                buf_stripped = buf.lstrip()
+                if buf_stripped.startswith(prefill):
+                    buf = buf_stripped[len(prefill):].lstrip()
+                    prefill_stripped = True
             for s in stop:
                 if s in buf:
                     yield buf[:buf.index(s)]
                     return
-            yield buf
+            if buf.strip():  # only yield non-empty/non-whitespace
+                yield buf
             buf = ""
