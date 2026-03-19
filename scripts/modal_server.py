@@ -120,14 +120,15 @@ class JasminModel:
                 )
             new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
             text_out = self.tokenizer.decode(new_ids, skip_special_tokens=True)
-            # Strip prefill if model regenerated it (check multiple times for robustness)
+            # Strip prefill if model regenerated it (case-insensitive, check multiple times for robustness)
             if prefill:
                 text_out = text_out.lstrip()  # strip leading whitespace first
-                if text_out.startswith(prefill):
+                # Case-insensitive prefix check (model may uppercase the prefill)
+                if text_out.lower().startswith(prefill.lower()):
                     text_out = text_out[len(prefill):].lstrip()
                 # For single-char prefills, also check if merged with next word (e.g., "khey" from "k" + "hey")
                 elif len(prefill) == 1 and len(text_out) > 1:
-                    if text_out[0] == prefill[0]:
+                    if text_out[0].lower() == prefill[0].lower():
                         text_out = text_out[1:].lstrip()
             for s in stop:
                 if s in text_out:
@@ -158,15 +159,16 @@ class JasminModel:
         prefill_stripped = False
         for token in streamer:
             buf += token
-            # Strip prefill if model regenerated it (only check once at start)
+            # Strip prefill if model regenerated it (case-insensitive, only check once at start)
             if prefill and not prefill_stripped:
                 buf_stripped = buf.lstrip()
-                if buf_stripped.startswith(prefill):
+                # Case-insensitive prefix check (model may uppercase the prefill)
+                if buf_stripped.lower().startswith(prefill.lower()):
                     buf = buf_stripped[len(prefill):].lstrip()
                     prefill_stripped = True
                 # For single-char prefills, also check if merged with next word (e.g., "khey" from "k" + "hey")
                 elif len(prefill) == 1 and len(buf_stripped) > 1:
-                    if buf_stripped[0] == prefill[0]:
+                    if buf_stripped[0].lower() == prefill[0].lower():
                         buf = buf_stripped[1:].lstrip()
                         prefill_stripped = True
             for s in stop:
