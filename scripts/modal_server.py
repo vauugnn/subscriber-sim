@@ -125,6 +125,10 @@ class JasminModel:
                 text_out = text_out.lstrip()  # strip leading whitespace first
                 if text_out.startswith(prefill):
                     text_out = text_out[len(prefill):].lstrip()
+                # For single-char prefills, also check if merged with next word (e.g., "khey" from "k" + "hey")
+                elif len(prefill) == 1 and len(text_out) > 1:
+                    if text_out[0] == prefill[0]:
+                        text_out = text_out[1:].lstrip()
             for s in stop:
                 if s in text_out:
                     text_out = text_out[:text_out.index(s)]
@@ -160,6 +164,11 @@ class JasminModel:
                 if buf_stripped.startswith(prefill):
                     buf = buf_stripped[len(prefill):].lstrip()
                     prefill_stripped = True
+                # For single-char prefills, also check if merged with next word (e.g., "khey" from "k" + "hey")
+                elif len(prefill) == 1 and len(buf_stripped) > 1:
+                    if buf_stripped[0] == prefill[0]:
+                        buf = buf_stripped[1:].lstrip()
+                        prefill_stripped = True
             for s in stop:
                 if s in buf:
                     yield buf[:buf.index(s)]
