@@ -20,7 +20,7 @@ BOLD   := \033[1m
 NC     := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help setup convert server app app-peft docker-build docker-up docker-down \
+.PHONY: help setup convert server app app-peft app-modal docker-build docker-up docker-down \
         logs clean clean-all parse augment augment-dataset merge-augmented split build-data modal-setup modal-deploy modal-serve \
         todos-sync todos-list todos-status
 
@@ -34,6 +34,8 @@ help:
 	@printf "  $(GREEN)make app$(NC)            Start Streamlit app natively on localhost:8501\n"
 	@printf "\n$(CYAN)Local PEFT setup (single terminal, no server)$(NC)\n"
 	@printf "  $(GREEN)make app-peft$(NC)       Start Streamlit with local LoRA adapter\n"
+	@printf "\n$(CYAN)Modal (cloud GPU, connect locally)$(NC)\n"
+	@printf "  $(GREEN)make app-modal$(NC)      Start Streamlit with Modal inference backend\n"
 	@printf "\n$(CYAN)Local Docker workflow$(NC)\n"
 	@printf "  $(GREEN)make docker-up$(NC)      Build + start app via Docker on :8501\n"
 	@printf "  $(GREEN)make docker-build$(NC)   Build the Docker image only\n"
@@ -104,6 +106,12 @@ app-peft: $(STAMP)
 	@printf "$(GREEN)Starting Streamlit with PEFT adapter → http://localhost:8501$(NC)\n"
 	@printf "$(YELLOW)Uses fine-tuned LoRA from models/lora-adapter$(NC)\n\n"
 	INFERENCE_BACKEND=peft PEFT_ADAPTER_PATH=models/lora-adapter \
+		$(VENV_ST) run app/main.py
+
+app-modal: $(STAMP)
+	@printf "$(GREEN)Starting Streamlit with Modal inference → http://localhost:8501$(NC)\n"
+	@printf "$(YELLOW)Modal server must be deployed (make modal-deploy).$(NC)\n\n"
+	INFERENCE_BACKEND=modal \
 		$(VENV_ST) run app/main.py
 
 # ── Docker ────────────────────────────────────────────────────────────────────
