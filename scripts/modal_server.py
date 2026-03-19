@@ -53,7 +53,7 @@ class JasminModel:
     @modal.enter()
     def load(self):
         import torch
-        from peft import PeftModel
+        # from peft import PeftModel  # disabled for raw base model test
         from transformers import AutoModelForCausalLM, BitsAndBytesConfig, PreTrainedTokenizerFast
 
         bnb_config = BitsAndBytesConfig(
@@ -74,16 +74,20 @@ class JasminModel:
             self.tokenizer.chat_template = f.read()
 
         print("Loading base model…")
-        base = AutoModelForCausalLM.from_pretrained(
+        self.model = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL,
             quantization_config=bnb_config,
             device_map="auto",
         )
-
-        print("Applying LoRA adapter…")
-        self.model = PeftModel.from_pretrained(base, ADAPTER_PATH)
         self.model.eval()
-        print("✅ Ready")
+
+        # NOTE: LoRA adapter loading disabled for this test branch
+        # Testing raw base model to isolate role confusion issues
+        # print("Applying LoRA adapter…")
+        # self.model = PeftModel.from_pretrained(base, ADAPTER_PATH)
+        # self.model.eval()
+
+        print("✅ Ready (raw base model, no LoRA adapter)")
 
     @modal.method()
     def generate(self, messages: list[dict], stop: list[str], max_tokens: int,
