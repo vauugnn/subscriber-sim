@@ -1136,9 +1136,9 @@ def stream_response(history: list[dict], archetype_key: str, cached_state: dict 
         full = "".join(_stream_modal(history, archetype_key, cached_state=cached_state))
 
     # Prepend the prefill that was injected as the partial assistant turn so the
-    # final response reads as one coherent message (model only returns the continuation).
+    # final response reads as one coherent message (modal/mlx strip it from generation output).
     prefill = get_subscriber_prefill(archetype_key)
-    if prefill and not full.startswith(prefill):
+    if prefill:
         full = prefill + full
     log.info("raw model output (%d chars): %.120s", len(full), full)
 

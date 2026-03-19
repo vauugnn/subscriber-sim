@@ -17,10 +17,10 @@ app = modal.App("jasmin-inference")
 BASE_MODEL = "unsloth/meta-llama-3.1-8b-instruct-bnb-4bit"
 
 # Modal Volume — upload adapter once with:
-#   modal volume put jasmin-model models/lora-adapter/ /mnt/jasmin/
+#   modal volume put jasmin-model models/lora-adapter /
 model_volume = modal.Volume.from_name("jasmin-model", create_if_missing=True)
-VOLUME_MOUNT = "/mnt/jasmin"
-ADAPTER_PATH = "/mnt/jasmin/lora-adapter"
+VOLUME_MOUNT = "/root/adapter"
+ADAPTER_PATH = "/root/adapter/lora-adapter"
 
 image = (
     modal.Image.from_registry(
@@ -116,6 +116,9 @@ class JasminModel:
                 )
             new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
             text_out = self.tokenizer.decode(new_ids, skip_special_tokens=True)
+            # Strip prefill if model regenerated it
+            if prefill and text_out.startswith(prefill):
+                text_out = text_out[len(prefill):]
             for s in stop:
                 if s in text_out:
                     text_out = text_out[:text_out.index(s)]
@@ -142,8 +145,13 @@ class JasminModel:
         ).start()
 
         buf = ""
+        prefill_stripped = False
         for token in streamer:
             buf += token
+            # Strip prefill if model regenerated it (only check once at start)
+            if prefill and not prefill_stripped and buf.startswith(prefill):
+                buf = buf[len(prefill):]
+                prefill_stripped = True
             for s in stop:
                 if s in buf:
                     yield buf[:buf.index(s)]
