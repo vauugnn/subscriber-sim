@@ -121,6 +121,8 @@ def _filter_response(text: str, archetype_key: str) -> str:
     if not text or not text.strip():
         return text
     out = text.strip()
+    # Strip hallucinated HTML/XML tags from training data leakage
+    out = re.sub(r"<[^>]+>", "", out)
     # Strip newline-delimited name artifacts from training data (e.g. "Wi\nhi😍" → "hi😍")
     out = re.sub(r"^[A-Za-z]{1,4}\n+", "", out)
     # Strip hallucinated subscriber name prefixes (e.g. "JO ", "Da ", "BP ")
