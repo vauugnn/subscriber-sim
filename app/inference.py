@@ -33,9 +33,40 @@ if not log.handlers:
 # ── Backend ────────────────────────────────────────────────────────────────────
 # INFERENCE_BACKEND=modal  → Modal GPU (production / Render)
 # INFERENCE_BACKEND=mlx    → local mlx_lm.server (Mac M-series, run start_mlx_server.sh first)
+# INFERENCE_BACKEND=peft   → local PEFT adapter with smart device selection (Mac/Linux)
 _INFERENCE_BACKEND = os.getenv("INFERENCE_BACKEND", "modal").lower()
 _MLX_SERVER_URL = os.getenv("MLX_SERVER_URL", "http://localhost:8080").rstrip("/")
 _MLX_MODEL_ID = os.getenv("MLX_MODEL_ID", "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit")
+_PEFT_ADAPTER_PATH = os.getenv("PEFT_ADAPTER_PATH", "models/lora-adapter")
+_PEFT_BASE_MODEL = os.getenv("PEFT_BASE_MODEL", "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit")
+
+# ── Device selection for PEFT (intelligent GPU/CPU choice on Mac) ─────────────
+def _select_device() -> str:
+    """Select optimal device: CUDA > MPS (Mac 16GB+) > CPU."""
+    import torch
+    import platform
+
+    # Try CUDA first (Linux/Windows with GPU)
+    if torch.cuda.is_available():
+        log.info("Using CUDA device")
+        return "cuda"
+
+    # Try MPS on Mac if sufficient RAM (>= 16GB physical RAM)
+    if torch.backends.mps.is_available() and platform.system() == "Darwin":
+        try:
+            import psutil
+            total_ram_gb = psutil.virtual_memory().total / (1024**3)
+            if total_ram_gb >= 16:
+                log.info(f"Mac detected with {total_ram_gb:.1f}GB RAM — using MPS GPU")
+                return "mps"
+        except ImportError:
+            # psutil not available; use heuristic: if mps is available on Mac, likely has enough RAM
+            log.info("Using MPS (Mac GPU)")
+            return "mps"
+
+    # Fall back to CPU
+    log.info("Using CPU device")
+    return "cpu"
 
 # Generation params — defaults (overridden per-archetype below)
 _DEFAULT_PARAMS = dict(
