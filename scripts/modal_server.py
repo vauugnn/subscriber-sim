@@ -91,16 +91,13 @@ class JasminModel:
 
     @modal.method()
     def generate(self, messages: list[dict], stop: list[str], max_tokens: int,
-                 temperature: float, top_p: float, rep_pen: float,
-                 prefill: str = ""):
+                 temperature: float, top_p: float, rep_pen: float):
         """Yields response tokens — call with .remote_gen() from the client."""
         from transformers import TextIteratorStreamer
 
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        if prefill:
-            text += prefill
         inputs = {k: v for k, v in self.tokenizer(text, return_tensors="pt").items()
                   if k != "token_type_ids"}
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
@@ -120,16 +117,6 @@ class JasminModel:
                 )
             new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
             text_out = self.tokenizer.decode(new_ids, skip_special_tokens=True)
-            # Strip prefill if model regenerated it (case-insensitive, check multiple times for robustness)
-            if prefill:
-                text_out = text_out.lstrip()  # strip leading whitespace first
-                # Case-insensitive prefix check (model may uppercase the prefill)
-                if text_out.lower().startswith(prefill.lower()):
-                    text_out = text_out[len(prefill):].lstrip()
-                # For single-char prefills, also check if merged with next word (e.g., "khey" from "k" + "hey")
-                elif len(prefill) == 1 and len(text_out) > 1:
-                    if text_out[0].lower() == prefill[0].lower():
-                        text_out = text_out[1:].lstrip()
             for s in stop:
                 if s in text_out:
                     text_out = text_out[:text_out.index(s)]
@@ -156,21 +143,8 @@ class JasminModel:
         ).start()
 
         buf = ""
-        prefill_stripped = False
         for token in streamer:
             buf += token
-            # Strip prefill if model regenerated it (case-insensitive, only check once at start)
-            if prefill and not prefill_stripped:
-                buf_stripped = buf.lstrip()
-                # Case-insensitive prefix check (model may uppercase the prefill)
-                if buf_stripped.lower().startswith(prefill.lower()):
-                    buf = buf_stripped[len(prefill):].lstrip()
-                    prefill_stripped = True
-                # For single-char prefills, also check if merged with next word (e.g., "khey" from "k" + "hey")
-                elif len(prefill) == 1 and len(buf_stripped) > 1:
-                    if buf_stripped[0].lower() == prefill[0].lower():
-                        buf = buf_stripped[1:].lstrip()
-                        prefill_stripped = True
             for s in stop:
                 if s in buf:
                     yield buf[:buf.index(s)]

@@ -14,9 +14,7 @@ from archetypes import (
     _SUBSCRIBER_SYSTEMS,
     get_archetype_loop_break,
     get_archetype_mid_convo_reminder,
-    get_opener_prefill,
     get_subscriber_opening_system,
-    get_subscriber_prefill,
     get_subscriber_system,
 )
 
@@ -198,7 +196,8 @@ _COLD_WARM = re.compile(
 
 # horny: block cheapskate haggling, troll skepticism, simp love-bombing
 _HORNY_OOC = re.compile(
-    r"\bbroke\b|can.t afford|too expensive|too much|what a rip|discount|cheaper"
+    r"\bbroke\b|can.t afford|cant afford|too expensive|too much|what a rip|discount|cheaper"
+    r"|\bsteep\b|too rich|hook.{0,10}deal|hook.{0,10}bro|work.*deal|splurgin|not worth|\bbudget\b"
     r"|that.s fake|not real|catfish|show proof|is this a bot"
     r"|i love you|you.re perfect|i adore you|miss you so much|u mean everything",
     re.IGNORECASE,
@@ -692,17 +691,14 @@ def _stream_mlx(history: list[dict], archetype_key: str, cached_state: dict | No
             chat = [{"role": "user", "content": "[NEW SUBSCRIBER]"}] + chat
         looping = _is_looping(chat)
         chat = _inject_mid_convo_reminder(chat, archetype_key, looping=looping)
-        
+
         # Use new helper for system prompt re-injection every 2 turns
         messages = _build_messages_with_system_reinject(chat, archetype_key, char_state)
-        
-        prefill = get_subscriber_prefill(archetype_key)
-        if prefill and (not messages or messages[-1]["role"] != "assistant"):
-            messages.append({"role": "assistant", "content": prefill})
+
         p = _params(archetype_key)
         if looping:
             p = {**p, "rep_pen": min(p["rep_pen"] + 0.20, 1.40), "temperature": min(p["temperature"] + 0.15, 1.0)}
-        log.info("MLX params: max_tokens=%s temp=%.2f top_p=%.2f rep_pen=%.2f | msgs: %d", 
+        log.info("MLX params: max_tokens=%s temp=%.2f top_p=%.2f rep_pen=%.2f | msgs: %d",
                  p["max_tokens"], p["temperature"], p["top_p"], p["rep_pen"], len(messages))
         yield _mlx_chat(messages, max_tokens=p["max_tokens"], temperature=p["temperature"], top_p=p["top_p"], rep_pen=p["rep_pen"])
     except Exception as e:
@@ -881,13 +877,6 @@ def _stream_modal(history: list[dict], archetype_key: str, cached_state: dict | 
         # Use new helper for system prompt re-injection every 2 turns
         messages = _build_messages_with_system_reinject(chat, archetype_key, char_state)
         
-        # Inject prefill as a partial assistant turn — forces the model to continue
-        # from an in-character seed token (e.g. "lol " for troll, "omg " for horny).
-        # This is the strongest single-token archetype lock available at inference time.
-        # Skip if last message is already from assistant (would create consecutive assistant turns).
-        prefill = get_subscriber_prefill(archetype_key)
-        if prefill and (not messages or messages[-1]["role"] != "assistant"):
-            messages.append({"role": "assistant", "content": prefill})
         p = _params(archetype_key)
         if looping:
             p = {
@@ -1140,11 +1129,6 @@ def stream_response(history: list[dict], archetype_key: str, cached_state: dict 
     else:
         full = "".join(_stream_modal(history, archetype_key, cached_state=cached_state))
 
-    # Prepend the prefill that was injected as the partial assistant turn so the
-    # final response reads as one coherent message (modal/mlx strip it from generation output).
-    prefill = get_subscriber_prefill(archetype_key)
-    if prefill and not full.startswith(prefill):
-        full = prefill + full
     log.info("raw model output (%d chars): %.120s", len(full), full)
 
     # Strip OOC artifacts

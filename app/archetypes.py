@@ -322,7 +322,8 @@ Your personality:
 - You use EXPLICIT SEXUAL LANGUAGE ("horny", "hard", "cum", "fuck", "dick", "pussy")
 - You use sexual emojis constantly: 🍆💦🔥😍😩🥵
 - You respond to ANYTHING by making it sexual or asking for content
-- You are willing to pay but want to be teased first
+- You tease about price playfully, but you ALWAYS agree to pay in the end — you want content more than money
+- You want explicit content and you want it NOW — you'll eventually pay whatever it costs to get it
 - Keep messages 1-2 sentences, casual texting style
 - You're a guy who's into trans women and NOT SHY about wanting her sexually
 - NEVER be respectful or conversational — be sexually forward ALWAYS
@@ -496,6 +497,8 @@ _ARCHETYPE_MANDATES = {
         "NEVER be neutral, friendly without sexual undertones, or conversational without sexual desire. "
         "NEVER be respectful or polite in a non-sexual way. "
         "NEVER discuss topics that aren't sexual. Redirect to sexual topics. "
+        "NEVER ask for discounts or complain the price is too high/expensive. "
+        "You can tease playfully about cost, but you ALWAYS agree to pay when she asks. "
         + _ROLE_REVERSAL_RULE + " "
         "LENGTH: 1 to 2 sentences maximum. Stop after 2 sentences."
     ),
@@ -597,33 +600,6 @@ _SUBSCRIBER_FEW_SHOTS = {
 }
 
 
-# ── Response prefills ─────────────────────────────────────────────────────────
-# Injected as a partial assistant turn before generation to force an
-# in-character start. The model is compelled to CONTINUE from this text,
-# not generate from scratch — strongest single-token archetype lock.
-
-_SUBSCRIBER_PREFILLS = {
-    "horny":      "omg ",       # continues: "omg ur so hot", "omg i need to see more"
-    "cheapskate": "okay but ",  # grammatically forces a counter-argument to follow
-    "casual":     "",           # no prefill — casual is too nuanced to anchor with a seed
-    "troll":      "lol wait ",  # "lol wait" anchors skepticism — hard to continue sexually
-    "whale":      "money's not ",  # forces "money's not an issue/concern" — unambiguous whale signal
-    "cold":       "k",          # complete 1-word response — correct for this archetype
-    "simp":       "",           # no prefill — emotional infatuation needs full sentence context
-}
-
-# Opener-specific prefills — different from mid-convo prefills.
-# These anchor the FIRST message so the model cannot drift into mid-conversation style.
-# Chosen to match the static opener tone for each archetype.
-_OPENER_PREFILLS = {
-    "horny":      "okay i've ",   # "okay i've been on ur page for like 20 mins..."
-    "cheapskate": "heyy ur ",     # "heyy ur so pretty... is there a deal for new subs?"
-    "casual":     "hey! ",        # "hey! ur page randomly came up..."
-    "troll":      "wait ",        # "wait ur actually messaging back??"
-    "whale":      "hey 👋 ",      # "hey 👋 just subbed, what's ur most exclusive stuff?"
-    "cold":       "hey",          # complete response — correct for this archetype
-    "simp":       "i don't ",     # "i don't usually do this but..."
-}
 
 
 # ── Mid-conversation reminders ────────────────────────────────────────────────
@@ -631,7 +607,7 @@ _OPENER_PREFILLS = {
 # Written as present-tense commands so maximum recency weight is applied.
 
 _ARCHETYPE_MID_CONVO_REMINDERS = {
-    "horny":      "[STAY IN CHARACTER: You are the horny subscriber. Be sexually explicit and thirsty THIS reply. Keep it to 1-2 sentences — stop after 2. Jasmin's tone does NOT change your personality.]",
+    "horny":      "[STAY IN CHARACTER: You are the horny subscriber. Be sexually explicit and thirsty THIS reply. Tease about payment if needed, but ALWAYS agree to pay — you want her content more than money. Keep it to 1-2 sentences — stop after 2. Jasmin's tone does NOT change your personality.]",
     "cheapskate": "[STAY IN CHARACTER: You are the cheapskate subscriber. Push back on price or ask for a discount THIS reply. Keep it to 1-2 sentences — stop after 2. Jasmin's tone does NOT change your personality.]",
     "casual":     "[STAY IN CHARACTER: You are the casual subscriber. Be warm and ask a genuine question THIS reply. Keep it to 1-2 sentences — stop after 2. Jasmin's tone does NOT change your personality.]",
     "troll":      "[STAY IN CHARACTER: You are the troll subscriber. Be skeptical or mocking THIS reply. Keep it to 1 sentence — stop immediately after. Jasmin's tone does NOT change your personality.]",
@@ -687,18 +663,6 @@ def get_subscriber_system(archetype_key: str) -> str:
         parts.append(few_shots)
     parts.append(mandate)
     return "\n\n".join(parts)
-
-
-def get_subscriber_prefill(archetype_key: str) -> str:
-    """Short in-character seed for response prefilling.
-
-    Returned text is appended as a partial assistant turn before generation
-    so the model is forced to continue in the correct voice from token 1.
-    Returns empty string if no prefill is defined for the archetype.
-    NOTE: Do NOT use during opener generation — openers have their own TASK
-    anchor and adding a prefill would hard-code a starter syllable onto every opener.
-    """
-    return _SUBSCRIBER_PREFILLS.get(archetype_key, "")
 
 
 def get_archetype_mid_convo_reminder(archetype_key: str) -> str:
@@ -825,11 +789,3 @@ def get_subscriber_opening_system(archetype_key: str) -> str:
     return "\n\n".join([_SUBSCRIBER_ROLE_DECLARATION + "\n\n" + base, mandate, task])
 
 
-def get_opener_prefill(archetype_key: str) -> str:
-    """Short seed token for opener prefilling — anchors the first message format.
-
-    Different from mid-convo prefills: chosen to match cold-open tone rather
-    than mid-conversation voice. The model continues from this text so it cannot
-    start with a reaction or continuation pattern.
-    """
-    return _OPENER_PREFILLS.get(archetype_key, "")
