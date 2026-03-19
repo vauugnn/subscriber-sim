@@ -20,7 +20,7 @@ BOLD   := \033[1m
 NC     := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help setup convert server app docker-build docker-up docker-down \
+.PHONY: help setup convert server app app-peft docker-build docker-up docker-down \
         logs clean clean-all parse augment augment-dataset merge-augmented split build-data modal-setup modal-deploy modal-serve \
         todos-sync todos-list todos-status
 
@@ -32,6 +32,8 @@ help:
 	@printf "  $(GREEN)make convert$(NC)        Convert LoRA adapter → MLX format (one-time)\n"
 	@printf "  $(GREEN)make server$(NC)         Start MLX inference server on localhost:8080\n"
 	@printf "  $(GREEN)make app$(NC)            Start Streamlit app natively on localhost:8501\n"
+	@printf "\n$(CYAN)Local PEFT setup (single terminal, no server)$(NC)\n"
+	@printf "  $(GREEN)make app-peft$(NC)       Start Streamlit with local LoRA adapter\n"
 	@printf "\n$(CYAN)Local Docker workflow$(NC)\n"
 	@printf "  $(GREEN)make docker-up$(NC)      Build + start app via Docker on :8501\n"
 	@printf "  $(GREEN)make docker-build$(NC)   Build the Docker image only\n"
@@ -96,6 +98,12 @@ app: $(STAMP)
 	@printf "$(GREEN)Starting Streamlit app → http://localhost:8501$(NC)\n"
 	@printf "$(YELLOW)MLX server must be running (make server).$(NC)\n\n"
 	INFERENCE_BACKEND=mlx MLX_SERVER_URL=http://localhost:8080 \
+		$(VENV_ST) run app/main.py
+
+app-peft: $(STAMP)
+	@printf "$(GREEN)Starting Streamlit with PEFT adapter → http://localhost:8501$(NC)\n"
+	@printf "$(YELLOW)Uses fine-tuned LoRA from models/lora-adapter$(NC)\n\n"
+	INFERENCE_BACKEND=peft PEFT_ADAPTER_PATH=models/lora-adapter \
 		$(VENV_ST) run app/main.py
 
 # ── Docker ────────────────────────────────────────────────────────────────────
