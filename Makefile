@@ -21,7 +21,7 @@ NC     := \033[0m
 
 .DEFAULT_GOAL := help
 .PHONY: help setup convert server app app-peft app-modal docker-build docker-up docker-down \
-        logs clean clean-all parse augment augment-dataset merge-augmented split build-data modal-setup modal-deploy modal-serve \
+        logs clean clean-all parse augment augment-dataset merge-augmented split build-data modal-setup modal-deploy modal-upload-deploy modal-serve \
         todos-sync todos-list todos-status
 
 # ── Help ──────────────────────────────────────────────────────────────────────
@@ -42,9 +42,10 @@ help:
 	@printf "  $(GREEN)make docker-down$(NC)    Stop Docker Compose\n"
 	@printf "  $(GREEN)make logs$(NC)           Tail Docker container logs\n"
 	@printf "\n$(CYAN)Modal (cloud GPU, production)$(NC)\n"
-	@printf "  $(GREEN)make modal-setup$(NC)    Install modal + authenticate\n"
-	@printf "  $(GREEN)make modal-deploy$(NC)   Deploy inference server to Modal cloud\n"
-	@printf "  $(GREEN)make modal-serve$(NC)    Run Modal server locally for testing\n"
+	@printf "  $(GREEN)make modal-setup$(NC)          Install modal + authenticate\n"
+	@printf "  $(GREEN)make modal-deploy$(NC)         Deploy inference server to Modal cloud\n"
+	@printf "  $(GREEN)make modal-upload-deploy$(NC)  Upload adapter + deploy (all-in-one)\n"
+	@printf "  $(GREEN)make modal-serve$(NC)          Run Modal server locally for testing\n"
 	@printf "\n$(CYAN)Data$(NC)\n"
 	@printf "  $(GREEN)make build-data$(NC)       Run full pipeline (parse → augment → merge → split)\n"
 	@printf "  $(GREEN)make parse$(NC)            Parse ALL chat exports → data/<archetype>.jsonl\n"
@@ -142,6 +143,14 @@ modal-deploy:
 	@printf "$(YELLOW)Deploying Jasmin inference server to Modal…$(NC)\n"
 	$(VENV)/bin/modal deploy scripts/modal_server.py
 	@printf "$(GREEN)✅ Deployed$(NC)\n"
+
+modal-upload-deploy: $(STAMP)
+	@printf "$(YELLOW)Uploading LoRA adapter to Modal volume…$(NC)\n"
+	$(VENV)/bin/modal volume put jasmin-model models/lora-adapter /
+	@printf "$(GREEN)✓ Volume uploaded$(NC)\n"
+	@printf "$(YELLOW)Deploying Jasmin inference server to Modal…$(NC)\n"
+	$(VENV)/bin/modal deploy scripts/modal_server.py
+	@printf "$(GREEN)✅ Deployed with adapter$(NC)\n"
 
 modal-serve:
 	@printf "$(YELLOW)Running Modal server locally (hot-reload)…$(NC)\n"
