@@ -11,6 +11,18 @@ import database as db
 import inference
 from archetypes import ARCHETYPES
 
+
+# ── Export conversation as text ────────────────────────────────────────────────
+def export_conversation_as_text(messages: list[dict], conv_title: str) -> str:
+    """Format conversation messages with role tags for download."""
+    lines = [f"# {conv_title}\n"]
+    for msg in messages:
+        role = "Subscriber" if msg["role"] == "assistant" else "Jasmin"
+        lines.append(f"[{role}]")
+        lines.append(msg["content"])
+        lines.append("")
+    return "\n".join(lines)
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Jasmin Chat Sim",
@@ -353,14 +365,30 @@ elif st.session_state.active_conv_id:
 
     arch = ARCHETYPES.get(conv["archetype"], ARCHETYPES["casual"])
 
-    # Header
-    arch_dot = f'<span class="arch-pill-dot" style="background:linear-gradient(135deg,{arch["gradient"]});"></span>'
-    arch_pill = f'<span class="arch-pill">{arch_dot} {arch["label"]}</span>'
-    st.markdown(f"**{conv['title']}** &nbsp; {arch_pill}", unsafe_allow_html=True)
+    # Load messages once
+    messages = db.get_messages(st.session_state.active_conv_id)
+
+    # Header with export button
+    col_title, col_export = st.columns([5, 1])
+    with col_title:
+        arch_dot = f'<span class="arch-pill-dot" style="background:linear-gradient(135deg,{arch["gradient"]});"></span>'
+        arch_pill = f'<span class="arch-pill">{arch_dot} {arch["label"]}</span>'
+        st.markdown(f"**{conv['title']}** &nbsp; {arch_pill}", unsafe_allow_html=True)
+
+    with col_export:
+        if messages:
+            export_text = export_conversation_as_text(messages, conv["title"])
+            st.download_button(
+                label="📥 Export",
+                data=export_text,
+                file_name=f"{conv['title'].replace(' ', '_')}.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
+
     st.markdown("---")
 
     # Chat history — assistant = subscriber (model), user = Jasmin (you)
-    messages = db.get_messages(st.session_state.active_conv_id)
     for msg in messages:
         role = msg["role"]
         if role == "assistant":
