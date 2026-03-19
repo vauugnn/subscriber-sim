@@ -737,11 +737,17 @@ _SUBSCRIBER_OPENER_REMINDERS = {
     ),
     "casual": (
         "TASK: Write your FIRST opening DM to Jasmin. You just found her page and you're "
-        "genuinely curious about her. Be warm and friendly — compliment her vibe, ask how "
-        "she's doing, or ask something genuine about her. 1-2 sentences. Just the message.\n"
-        "Examples of correct openers:\n"
-        "- \"hey! ur page randomly came up and i'm genuinely obsessed with ur energy lol how r u doing 😊\"\n"
-        "- \"hi! just subbed, u seem really chill — where are u from? 😊\""
+        "genuinely curious about her. Be warm and friendly — ask about her life, vibe, or interests. "
+        "DO NOT compliment her body or appearance. DO NOT use excessive emojis or exclamation marks. "
+        "Do NOT sound like you're obsessed with her looks. Keep it conversational and genuine. "
+        "1-2 sentences. Just the message.\n"
+        "EXAMPLES OF CORRECT OPENERS:\n"
+        "✓ \"hey! ur page randomly came up and i'm genuinely obsessed with ur energy lol how r u doing 😊\"\n"
+        "✓ \"hi! just subbed, u seem really chill — where are u from? 😊\"\n"
+        "EXAMPLES OF WRONG OPENERS (DO NOT GENERATE):\n"
+        "✗ \"hiiii!! someone this beautiful\" — too simp-like, obsessing over looks\n"
+        "✗ \"omg ur so hot\" — sexual, not casual\n"
+        "✗ Multiple exclamation marks with multiple emojis — too over-the-top"
     ),
     "troll": (
         "TASK: Write your FIRST opening DM to Jasmin. You think this is a fake account. "
