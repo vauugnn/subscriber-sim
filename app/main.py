@@ -7,6 +7,18 @@ sys.path.insert(0, os.path.dirname(__file__))
 import streamlit as st
 from datetime import datetime
 
+# Load Modal credentials from Streamlit secrets before importing inference
+try:
+    if "modal" in st.secrets and "token_id" in st.secrets["modal"]:
+        os.environ["MODAL_TOKEN_ID"] = st.secrets["modal"]["token_id"]
+        os.environ["MODAL_TOKEN_SECRET"] = st.secrets["modal"]["token_secret"]
+    else:
+        raise KeyError("modal.token_id not found in secrets")
+except Exception as e:
+    st.error(f"❌ Modal credentials not loaded: {e}")
+    st.info("Add secrets to Streamlit Cloud: Settings → Secrets")
+    st.stop()
+
 import database as db
 import inference
 from archetypes import ARCHETYPES
