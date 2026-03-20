@@ -18,4 +18,3 @@ models/finetuned/
 models/finetuned-mlx/adapters.safetensors
 .env*.DS_Store
 *.toml
-
