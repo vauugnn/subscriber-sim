@@ -4,9 +4,12 @@ import re
 import sys
 from collections.abc import Callable, Generator
 
-# Ensure local modules (archetypes, database) are importable regardless of
-# how this file is loaded (Streamlit Cloud, Docker, local venv)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Ensure local modules are importable when inference.py is run standalone
+# (e.g. Docker entrypoint). On Streamlit Cloud, main.py's sys.path.insert
+# already covers this — adding the path again causes a KeyError in sys.modules
+# when the same module is resolved under two different path keys.
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from archetypes import (
     ARCHETYPES,
