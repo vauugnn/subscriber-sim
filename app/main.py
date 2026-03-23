@@ -410,32 +410,9 @@ elif st.session_state.active_conv_id:
             with st.chat_message("user", avatar=":material/face_5:"):
                 st.markdown(msg["content"])
 
-    # Stream dynamic opener for newly created conversations
-    if st.session_state.get("pending_opener"):
-        _opener_arch = st.session_state.pending_opener
-        st.session_state.pending_opener = None
-        with st.chat_message("assistant", avatar=f":material/{arch['icon']}:"):
-            placeholder = st.empty()
-            placeholder.markdown(
-                '<div class="typing-indicator"><span></span><span></span><span></span></div>',
-                unsafe_allow_html=True,
-            )
-            full_opener = ""
-            try:
-                for chunk in inference.stream_opener(_opener_arch):
-                    if not full_opener:
-                        placeholder.empty()
-                    full_opener += chunk
-                    placeholder.markdown(full_opener + " ▌")
-            except Exception:
-                full_opener = inference.generate_opener(_opener_arch)
-            if not full_opener or not full_opener.strip():
-                full_opener = inference.generate_opener(_opener_arch)
-            placeholder.markdown(full_opener)
-        db.add_message(st.session_state.active_conv_id, "assistant", full_opener)
-        st.rerun()
-
-    # Input — user types as Jasmin
+    # Input — user types as Jasmin (rendered before pending_opener block so it
+    # always appears even while the opener is streaming; st.chat_input is
+    # bottom-pinned by Streamlit so code order has no visual impact)
     prompt = st.chat_input("Reply as Jasmin…")
     if prompt:
         db.add_message(st.session_state.active_conv_id, "user", prompt)
@@ -464,6 +441,31 @@ elif st.session_state.active_conv_id:
         db.add_message(st.session_state.active_conv_id, "assistant", full_response)
         new_state = inference.update_character_state(cached_state, full_response, conv["archetype"])
         db.update_character_state(st.session_state.active_conv_id, new_state)
+        st.rerun()
+
+    # Stream dynamic opener for newly created conversations
+    if st.session_state.get("pending_opener"):
+        _opener_arch = st.session_state.pending_opener
+        st.session_state.pending_opener = None
+        with st.chat_message("assistant", avatar=f":material/{arch['icon']}:"):
+            placeholder = st.empty()
+            placeholder.markdown(
+                '<div class="typing-indicator"><span></span><span></span><span></span></div>',
+                unsafe_allow_html=True,
+            )
+            full_opener = ""
+            try:
+                for chunk in inference.stream_opener(_opener_arch):
+                    if not full_opener:
+                        placeholder.empty()
+                    full_opener += chunk
+                    placeholder.markdown(full_opener + " ▌")
+            except Exception:
+                full_opener = inference.generate_opener(_opener_arch)
+            if not full_opener or not full_opener.strip():
+                full_opener = inference.generate_opener(_opener_arch)
+            placeholder.markdown(full_opener)
+        db.add_message(st.session_state.active_conv_id, "assistant", full_opener)
         st.rerun()
 
 # ── Welcome screen ────────────────────────────────────────────────────────────
