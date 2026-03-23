@@ -152,6 +152,20 @@ def _filter_response(text: str, archetype_key: str) -> str:
     out = re.sub(r"^\*+\s*", "", out)
     return out.strip() or text.strip()
 
+
+_COLD_POSTFIX = re.compile(
+    r"\s+(k|ok|lol|yeah|yep|nope|idk|sure|cool|nice|hm|hmm)\s*$",
+    re.IGNORECASE,
+)
+
+def _filter_opener(text: str, archetype_key: str) -> str:
+    """_filter_response + archetype-specific opener cleanup."""
+    out = _filter_response(text, archetype_key)
+    # Strip cold vocabulary words appended as a trailing postfix (e.g. "hey k" → "hey")
+    if archetype_key == "cold" and out:
+        out = _COLD_POSTFIX.sub("", out).strip()
+    return out
+
 # ── Per-archetype behavioral filters ──────────────────────────────────────────
 # Mirrors the post-generation filters in subscriber_sim.ipynb Cell 6.
 # Applied AFTER _filter_response so OOC cleanup runs first.
@@ -720,7 +734,7 @@ def _generate_opener_mlx(archetype_key: str) -> str:
         for attempt in range(3):
             p_attempt = {**p, "rep_pen": min(p["rep_pen"] + attempt * 0.15, 1.5), "temperature": p["temperature"] + 0.05}
             raw = _mlx_chat(messages, max_tokens=p_attempt["max_tokens"], temperature=p_attempt["temperature"], top_p=p_attempt["top_p"], rep_pen=p_attempt["rep_pen"])
-            opener = _filter_response(raw, archetype_key)
+            opener = _filter_opener(raw, archetype_key)
             if _opener_is_valid(opener, archetype_key):
                 log.info("MLX opener accepted (attempt %d): %.120s", attempt + 1, opener)
                 return opener
@@ -1072,7 +1086,7 @@ def _generate_opener_modal(archetype_key: str) -> str:
                 rep_pen=p_attempt["rep_pen"],
             ))
             raw = "".join(tokens)
-            opener = _filter_response(raw, archetype_key)
+            opener = _filter_opener(raw, archetype_key)
             if _opener_is_valid(opener, archetype_key):
                 log.info("dynamic opener accepted (attempt %d): %.120s", attempt + 1, opener)
                 return opener
