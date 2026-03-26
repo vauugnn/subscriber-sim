@@ -19,6 +19,14 @@ Follow the format below to ensure items parse correctly.
 <!-- Character Coherence Improvements — Medium Priority Prompt Engineering -->
 - [ ] [PROMPT-1] Add voice fingerprint section (vocabulary, style, emoji use) to each archetype's system prompt <!-- issue:83 -->
 - [ ] [PROMPT-2] Increase system re-injection frequency for conversations over 8 turns <!-- issue:84 -->
+- [ ] Fix 120-second startup timeout <!-- issue:85 -->
+  > Startup is taking too long and hitting the 120-second timeout. Investigate slow initialization steps (model loading, env setup) and optimize or split them to stay within the limit.
+- [ ] Handle Hugging Face download timeout gracefully <!-- issue:86 -->
+  > Network connection to Hugging Face times out during model/weight downloads. Add retry logic with exponential backoff, surface a clear error message, and consider caching or pre-downloading assets to avoid repeated failures.
+- [ ] Handle spot instance preemption / worker reclaim <!-- issue:87 -->
+  > Worker is killed mid-run when the spot instance gets reclaimed. Implement checkpoint saving at regular intervals and add a preemption signal handler so training state can be resumed from the last checkpoint after the instance restarts.
+- [ ] Deduplicate quantization config to remove warnings <!-- issue:88 -->
+  > Quantization settings are specified in multiple places, causing duplicate/conflicting config warnings. Audit all quantization config locations (Cell 0, Cell 2, Cell 6) and consolidate into a single source of truth.
 
 ## Done
 - [ ] CI/CD pipeline <!-- issue:76 -->
