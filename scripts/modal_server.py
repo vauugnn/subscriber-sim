@@ -46,7 +46,7 @@ image = (
     gpu="L4",
     volumes={VOLUME_MOUNT: model_volume},
     scaledown_window=60,
-    timeout=120,
+    timeout=600,
 )
 class JasminModel:
 
