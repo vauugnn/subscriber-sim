@@ -39,8 +39,20 @@ def _now() -> str:
 
 # ── Backend selection ─────────────────────────────────────────────────────────
 
+# Check environment variables first, then Streamlit secrets
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 _SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
+# If env vars not set, try to load from Streamlit secrets
+if not _SUPABASE_URL or not _SUPABASE_KEY:
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets'):
+            _SUPABASE_URL = _SUPABASE_URL or st.secrets.get("SUPABASE_URL", "")
+            _SUPABASE_KEY = _SUPABASE_KEY or st.secrets.get("SUPABASE_KEY", "")
+    except Exception:
+        pass  # Streamlit not available or secrets not configured
+
 _USE_SUPABASE = bool(_SUPABASE_URL and _SUPABASE_KEY)
 
 if _USE_SUPABASE:

@@ -1,6 +1,23 @@
 import sys
 import os
 
+# Load .env file FIRST before any other imports
+# This is crucial because Streamlit doesn't auto-load .env files
+_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+try:
+    from dotenv import load_dotenv
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+except ImportError:
+    # Fallback: manual loading if python-dotenv not available
+    if os.path.exists(_env_path):
+        with open(_env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+
 # Ensure local modules are importable both in Docker (PYTHONPATH=/app) and natively
 sys.path.insert(0, os.path.dirname(__file__))
 
