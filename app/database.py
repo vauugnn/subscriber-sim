@@ -65,12 +65,14 @@ def _get_supabase_client():
                 _SUPABASE_URL = _SUPABASE_URL or st.secrets.get("SUPABASE_URL", "")
                 _SUPABASE_KEY = _SUPABASE_KEY or st.secrets.get("SUPABASE_KEY", "")
                 _USE_SUPABASE = bool(_SUPABASE_URL and _SUPABASE_KEY)
-        except Exception:
+        except Exception as e:
             pass
     
-    if _USE_SUPABASE:
+    if _USE_SUPABASE and _SUPABASE_URL and _SUPABASE_KEY:
         from supabase import create_client as _create_client
         _sb = _create_client(_SUPABASE_URL, _SUPABASE_KEY)
+    elif not _sb:
+        raise RuntimeError("Supabase credentials not found. Please configure SUPABASE_URL and SUPABASE_KEY in secrets or environment variables.")
     
     return _sb
 
