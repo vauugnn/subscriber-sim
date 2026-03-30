@@ -39,27 +39,42 @@ def _now() -> str:
 
 # ── Backend selection ─────────────────────────────────────────────────────────
 
-# Check environment variables first, then Streamlit secrets
+# Check environment variables first
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 _SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-
-# If env vars not set, try to load from Streamlit secrets
-if not _SUPABASE_URL or not _SUPABASE_KEY:
-    try:
-        import streamlit as st
-        if hasattr(st, 'secrets'):
-            _SUPABASE_URL = _SUPABASE_URL or st.secrets.get("SUPABASE_URL", "")
-            _SUPABASE_KEY = _SUPABASE_KEY or st.secrets.get("SUPABASE_KEY", "")
-    except Exception:
-        pass  # Streamlit not available or secrets not configured
-
 _USE_SUPABASE = bool(_SUPABASE_URL and _SUPABASE_KEY)
 
-if _USE_SUPABASE:
-    from supabase import create_client as _create_client
-    _sb = _create_client(_SUPABASE_URL, _SUPABASE_KEY)
-else:
-    # SQLite fallback — used when Supabase env vars are absent (local dev)
+# Supabase client (lazy-loaded to support Streamlit secrets)
+_sb = None
+_sb_initialized = False
+
+def _get_supabase_client():
+    """Lazy-load Supabase client, checking secrets at runtime."""
+    global _sb, _sb_initialized, _USE_SUPABASE, _SUPABASE_URL, _SUPABASE_KEY
+    
+    if _sb_initialized:
+        return _sb
+    
+    _sb_initialized = True
+    
+    # Try to load from Streamlit secrets if env vars not set
+    if not _SUPABASE_URL or not _SUPABASE_KEY:
+        try:
+            import streamlit as st
+            if hasattr(st, 'secrets'):
+                _SUPABASE_URL = _SUPABASE_URL or st.secrets.get("SUPABASE_URL", "")
+                _SUPABASE_KEY = _SUPABASE_KEY or st.secrets.get("SUPABASE_KEY", "")
+                _USE_SUPABASE = bool(_SUPABASE_URL and _SUPABASE_KEY)
+        except Exception:
+            pass
+    
+    if _USE_SUPABASE:
+        from supabase import create_client as _create_client
+        _sb = _create_client(_SUPABASE_URL, _SUPABASE_KEY)
+    
+    return _sb
+
+# SQLite fallback — used when Supabase not available
     import sqlite3
     import threading
     from pathlib import Path
@@ -119,7 +134,7 @@ def create_conversation(title: str, archetype: str) -> dict:
     now = _now()
     row = {"id": conv_id, "title": title, "archetype": archetype, "created_at": now, "updated_at": now}
     if _USE_SUPABASE:
-        _sb.table("conversations").insert(row).execute()
+        _get_supabase_client().table("conversations").insert(row).execute()
     else:
         conn = _get_conn()
         with _lock:
@@ -133,7 +148,7 @@ def create_conversation(title: str, archetype: str) -> dict:
 
 def list_conversations() -> list[dict]:
     if _USE_SUPABASE:
-        res = _sb.table("conversations").select("*").order("updated_at", desc=True).execute()
+        res = _get_supabase_client().table("conversations").select("*").order("updated_at", desc=True).execute()
         return res.data or []
     conn = _get_conn()
     rows = conn.execute("SELECT * FROM conversations ORDER BY updated_at DESC").fetchall()
@@ -142,7 +157,7 @@ def list_conversations() -> list[dict]:
 
 def get_conversation(conv_id: str) -> dict | None:
     if _USE_SUPABASE:
-        res = _sb.table("conversations").select("*").eq("id", conv_id).execute()
+        res = _get_supabase_client().table("conversations").select("*").eq("id", conv_id).execute()
         return res.data[0] if res.data else None
     conn = _get_conn()
     row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conv_id,)).fetchone()
@@ -152,7 +167,7 @@ def get_conversation(conv_id: str) -> dict | None:
 def update_conversation_title(conv_id: str, title: str) -> None:
     now = _now()
     if _USE_SUPABASE:
-        _sb.table("conversations").update({"title": title.strip(), "updated_at": now}).eq("id", conv_id).execute()
+        _get_supabase_client().table("conversations").update({"title": title.strip(), "updated_at": now}).eq("id", conv_id).execute()
     else:
         conn = _get_conn()
         with _lock:
@@ -165,7 +180,7 @@ def update_conversation_title(conv_id: str, title: str) -> None:
 
 def get_character_state(conv_id: str) -> dict:
     if _USE_SUPABASE:
-        res = _sb.table("conversations").select("character_state").eq("id", conv_id).execute()
+        res = _get_supabase_client().table("conversations").select("character_state").eq("id", conv_id).execute()
         return (res.data[0].get("character_state") or {}) if res.data else {}
     conn = _get_conn()
     row = conn.execute("SELECT character_state FROM conversations WHERE id = ?", (conv_id,)).fetchone()
@@ -178,7 +193,7 @@ def get_character_state(conv_id: str) -> dict:
 def update_character_state(conv_id: str, state: dict) -> None:
     import json
     if _USE_SUPABASE:
-        _sb.table("conversations").update({"character_state": state}).eq("id", conv_id).execute()
+        _get_supabase_client().table("conversations").update({"character_state": state}).eq("id", conv_id).execute()
     else:
         conn = _get_conn()
         with _lock:
@@ -191,7 +206,7 @@ def update_character_state(conv_id: str, state: dict) -> None:
 
 def delete_conversation(conv_id: str) -> None:
     if _USE_SUPABASE:
-        _sb.table("conversations").delete().eq("id", conv_id).execute()
+        _get_supabase_client().table("conversations").delete().eq("id", conv_id).execute()
     else:
         conn = _get_conn()
         with _lock:
@@ -204,13 +219,14 @@ def delete_conversation(conv_id: str) -> None:
 def add_message(conv_id: str, role: str, content: str) -> None:
     now = _now()
     if _USE_SUPABASE:
-        _sb.table("messages").insert({
+        sb = _get_supabase_client()
+        sb.table("messages").insert({
             "conversation_id": conv_id,
             "role": role,
             "content": content,
             "created_at": now,
         }).execute()
-        _sb.table("conversations").update({"updated_at": now}).eq("id", conv_id).execute()
+        sb.table("conversations").update({"updated_at": now}).eq("id", conv_id).execute()
     else:
         conn = _get_conn()
         with _lock:
@@ -227,7 +243,7 @@ def add_message(conv_id: str, role: str, content: str) -> None:
 
 def get_messages(conv_id: str) -> list[dict]:
     if _USE_SUPABASE:
-        res = _sb.table("messages").select("*").eq("conversation_id", conv_id).order("id").execute()
+        res = _get_supabase_client().table("messages").select("*").eq("conversation_id", conv_id).order("id").execute()
         return res.data or []
     conn = _get_conn()
     rows = conn.execute(
@@ -239,7 +255,7 @@ def get_messages(conv_id: str) -> list[dict]:
 
 def delete_message(msg_id: int) -> None:
     if _USE_SUPABASE:
-        _sb.table("messages").delete().eq("id", msg_id).execute()
+        _get_supabase_client().table("messages").delete().eq("id", msg_id).execute()
     else:
         conn = _get_conn()
         with _lock:
