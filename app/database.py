@@ -97,8 +97,21 @@ def _get_supabase_client():
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 def init_db() -> None:
-    if _USE_SUPABASE:
+    # Check if Supabase will be used (dynamically, to support Streamlit secrets)
+    use_supabase = _USE_SUPABASE
+    if not use_supabase:
+        try:
+            import streamlit as st
+            if hasattr(st, 'secrets'):
+                url = st.secrets.get("SUPABASE_URL", "")
+                key = st.secrets.get("SUPABASE_KEY", "")
+                use_supabase = bool(url and key)
+        except Exception:
+            pass
+    
+    if use_supabase:
         return  # tables are managed in the Supabase dashboard
+    
     conn = _get_conn()
     with _lock:
         conn.executescript("""
