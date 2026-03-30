@@ -62,8 +62,16 @@ def _get_supabase_client():
         try:
             import streamlit as st
             if hasattr(st, 'secrets'):
+                # Try root-level secrets first
                 _SUPABASE_URL = _SUPABASE_URL or st.secrets.get("SUPABASE_URL", "")
                 _SUPABASE_KEY = _SUPABASE_KEY or st.secrets.get("SUPABASE_KEY", "")
+                
+                # Then try nested [supabase] section (Streamlit Cloud format)
+                if not _SUPABASE_URL or not _SUPABASE_KEY:
+                    supabase_secrets = st.secrets.get("supabase", {})
+                    _SUPABASE_URL = _SUPABASE_URL or supabase_secrets.get("SUPABASE_URL", "")
+                    _SUPABASE_KEY = _SUPABASE_KEY or supabase_secrets.get("SUPABASE_KEY", "")
+                
                 _USE_SUPABASE = bool(_SUPABASE_URL and _SUPABASE_KEY)
         except Exception as e:
             pass
@@ -72,7 +80,7 @@ def _get_supabase_client():
         from supabase import create_client as _create_client
         _sb = _create_client(_SUPABASE_URL, _SUPABASE_KEY)
     elif not _sb:
-        raise RuntimeError("Supabase credentials not found. Please configure SUPABASE_URL and SUPABASE_KEY in secrets or environment variables.")
+        raise RuntimeError("Supabase credentials not found. Please configure in Streamlit Secrets: [supabase] section with SUPABASE_URL and SUPABASE_KEY, or environment variables.")
     
     return _sb
 
