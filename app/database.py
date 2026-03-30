@@ -74,70 +74,33 @@ def _get_supabase_client():
     
     return _sb
 
+
 # SQLite fallback — used when Supabase not available
-    import sqlite3
-    import threading
-    from pathlib import Path
+import sqlite3
+import threading
+from pathlib import Path
 
-    _DB_PATH = Path(os.getenv("DB_PATH", "data/chat.db"))
-    _lock = threading.Lock()
-    _conn: "sqlite3.Connection | None" = None
+_DB_PATH = Path(os.getenv("DB_PATH", "data/chat.db"))
+_lock = threading.Lock()
+_conn: "sqlite3.Connection | None" = None
 
-    def _get_conn() -> "sqlite3.Connection":
-        global _conn
-        if _conn is None:
-            _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-            _conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
-            _conn.row_factory = sqlite3.Row
-            _conn.execute("PRAGMA journal_mode=WAL")
-            _conn.execute("PRAGMA foreign_keys=ON")
-        return _conn
+def _get_conn() -> "sqlite3.Connection":
+    global _conn
+    if _conn is None:
+        _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+        _conn.row_factory = sqlite3.Row
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _conn.execute("PRAGMA foreign_keys=ON")
+    return _conn
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 def init_db() -> None:
-    # Check if Supabase will be used (dynamically, to support Streamlit secrets)
-    use_supabase = _USE_SUPABASE
-    if not use_supabase:
-        try:
-            import streamlit as st
-            if hasattr(st, 'secrets'):
-                url = st.secrets.get("SUPABASE_URL", "")
-                key = st.secrets.get("SUPABASE_KEY", "")
-                use_supabase = bool(url and key)
-        except Exception:
-            pass
-    
-    if use_supabase:
-        return  # tables are managed in the Supabase dashboard
-    
-    conn = _get_conn()
-    with _lock:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id              TEXT PRIMARY KEY,
-                title           TEXT NOT NULL,
-                archetype       TEXT NOT NULL,
-                created_at      TEXT NOT NULL,
-                updated_at      TEXT NOT NULL,
-                character_state TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS messages (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                role            TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
-                content         TEXT NOT NULL,
-                created_at      TEXT NOT NULL
-            );
-        """)
-        # Migrate existing DBs that predate the character_state column
-        try:
-            conn.execute("ALTER TABLE conversations ADD COLUMN character_state TEXT")
-            conn.commit()
-        except Exception:
-            pass  # column already exists
+    # All table creation is managed in Supabase dashboard
+    # This function is kept for compatibility but does nothing
+    pass
 
 
 # ── Conversation CRUD ─────────────────────────────────────────────────────────
